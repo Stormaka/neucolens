@@ -1,0 +1,15 @@
+{
+  "name": "neu-codelens",
+  "version": "1.0.0",
+  "description": "Hệ thống hỗ trợ sinh viên hiểu Đồ án / KLTN — NEU CodeLens",
+  "private": true,
+  "scripts": {
+    "install-all": "npm.cmd install && npm.cmd install --prefix backend && npm.cmd install --prefix frontend",
+    "dev:backend": "npm.cmd run dev --prefix backend",
+    "dev:frontend": "npm.cmd run dev --prefix frontend",
+    "dev": "concurrently \"npm.cmd run dev:backend\" \"npm.cmd run dev:frontend\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
