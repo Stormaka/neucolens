@@ -59,12 +59,15 @@ const projects = [
 // ── Routes ──
 
 // Health check
-app.get('/api/health', (req, res) => {
+const apiRouter = express.Router()
+
+// Health check
+apiRouter.get('/health', (req, res) => {
   res.json({ status: 'ok', version: '1.0.0', service: 'NEU CodeLens API' })
 })
 
 // Auth
-app.post('/api/auth/login', (req, res) => {
+apiRouter.post('/auth/login', (req, res) => {
   const { email, password } = req.body
   if (!email || !password) {
     return res.status(400).json({ error: 'Email và password là bắt buộc' })
@@ -83,7 +86,7 @@ app.post('/api/auth/login', (req, res) => {
 })
 
 // Projects
-app.get('/api/projects', (req, res) => {
+apiRouter.get('/projects', (req, res) => {
   const { studentId, role } = req.query
   if (role === 'student' && studentId) {
     return res.json(projects.filter(p => p.studentId === studentId))
@@ -91,13 +94,13 @@ app.get('/api/projects', (req, res) => {
   res.json(projects) // lecturer gets all
 })
 
-app.get('/api/projects/:id', (req, res) => {
+apiRouter.get('/projects/:id', (req, res) => {
   const project = projects.find(p => p.id === req.params.id)
   if (!project) return res.status(404).json({ error: 'Project không tìm thấy' })
   res.json(project)
 })
 
-app.post('/api/projects', (req, res) => {
+apiRouter.post('/projects', (req, res) => {
   const { title, githubUrl, studentId, studentName } = req.body
   const newProject = {
     id: 'proj-' + Date.now(),
@@ -140,7 +143,7 @@ app.post('/api/projects', (req, res) => {
 })
 
 // Knowledge graph
-app.get('/api/projects/:id/graph', (req, res) => {
+apiRouter.get('/projects/:id/graph', (req, res) => {
   const project = projects.find(p => p.id === req.params.id)
   if (!project) return res.status(404).json({ error: 'Project không tìm thấy' })
   if (project.status !== 'done') {
@@ -151,7 +154,7 @@ app.get('/api/projects/:id/graph', (req, res) => {
 })
 
 // Analysis report
-app.get('/api/projects/:id/report', (req, res) => {
+apiRouter.get('/projects/:id/report', (req, res) => {
   const project = projects.find(p => p.id === req.params.id)
   if (!project) return res.status(404).json({ error: 'Project không tìm thấy' })
 
@@ -173,7 +176,7 @@ app.get('/api/projects/:id/report', (req, res) => {
 })
 
 // Chat
-app.post('/api/projects/:id/chat', (req, res) => {
+apiRouter.post('/projects/:id/chat', (req, res) => {
   const { message } = req.body
   if (!message) return res.status(400).json({ error: 'Message là bắt buộc' })
 
@@ -199,7 +202,7 @@ app.post('/api/projects/:id/chat', (req, res) => {
 })
 
 // Lecturer: add review/comment
-app.post('/api/projects/:id/review', (req, res) => {
+apiRouter.post('/projects/:id/review', (req, res) => {
   const { comment, score } = req.body
   const project = projects.find(p => p.id === req.params.id)
   if (!project) return res.status(404).json({ error: 'Project không tìm thấy' })
@@ -213,7 +216,7 @@ app.post('/api/projects/:id/review', (req, res) => {
 })
 
 // Stats (lecturer)
-app.get('/api/stats', (req, res) => {
+apiRouter.get('/stats', (req, res) => {
   res.json({
     totalProjects: projects.length,
     pending: projects.filter(p => p.status === 'pending').length,
@@ -225,6 +228,10 @@ app.get('/api/stats', (req, res) => {
       Math.max(1, projects.filter(p => p.architectureScore > 0).length)),
   })
 })
+
+// Mount router under /api and / to handle both experimental services and serverless functions
+app.use('/api', apiRouter)
+app.use('/', apiRouter)
 
 // 404 handler
 app.use((req, res) => {
