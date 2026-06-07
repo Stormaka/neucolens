@@ -1,60 +1,41 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import NavBar from '../components/NavBar'
 import UploadZone from '../components/UploadZone'
+import { projectStore, buildProjectFromZip } from '../data/projectStore'
+import type { ProjectMeta } from '../data/projectStore'
 
-const SAMPLE_PROJECTS = [
-  {
-    id: 'proj-1',
-    name: 'Hệ thống Quản lý Bán hàng',
-    lang: 'Java · Spring Boot',
-    status: 'done',
-    nodes: 87,
-    edges: 134,
-    layers: ['API', 'Service', 'Repository', 'Entity'],
-    updatedAt: '2026-06-05',
-    score: 82,
-    tags: ['spring', 'mysql', 'rest-api'],
-  },
-  {
-    id: 'proj-2',
-    name: 'Web App Quản lý Nhân sự',
-    lang: 'Node.js · React',
-    status: 'done',
-    nodes: 63,
-    edges: 91,
-    layers: ['Frontend', 'API', 'Database'],
-    updatedAt: '2026-06-04',
-    score: 75,
-    tags: ['react', 'express', 'mongodb'],
-  },
-  {
-    id: 'proj-3',
-    name: 'App Đặt lịch Khám bệnh',
-    lang: 'Python · Django',
-    status: 'processing',
-    nodes: 0,
-    edges: 0,
-    layers: [],
-    updatedAt: '2026-06-06',
-    score: 0,
-    tags: ['django', 'postgresql'],
-  },
-]
-
-const QUICK_QUESTIONS = [
-  'Kiến trúc tổng thể của project này là gì?',
-  'Luồng xử lý đăng nhập hoạt động như thế nào?',
-  'Module nào phức tạp nhất trong project?',
-  'Service layer được tổ chức ra sao?',
-  'Có những design pattern nào được sử dụng?',
-  'Cách kết nối database được xử lý như thế nào?',
-]
 
 export default function StudentDashboard() {
   const navigate = useNavigate()
   const [showUpload, setShowUpload] = useState(false)
   const [activeTab, setActiveTab] = useState<'projects' | 'chat'>('projects')
+  const [projects, setProjects] = useState<ProjectMeta[]>(() => projectStore.getAll())
+
+  // Sync với store khi có project mới
+  useEffect(() => {
+    return projectStore.subscribe(() => {
+      setProjects([...projectStore.getAll()])
+    })
+  }, [])
+
+  const firstDoneProject = projects.find(p => p.status === 'done')
+
+  const handleUpload = (fileOrUrl: File | string) => {
+    let newProject: ProjectMeta
+    if (fileOrUrl instanceof File) {
+      newProject = buildProjectFromZip(fileOrUrl.name)
+    } else {
+      // GitHub URL — lấy tên repo từ URL
+      const repoName = (fileOrUrl as string).split('/').pop() || 'my-project'
+      newProject = buildProjectFromZip(repoName)
+    }
+    projectStore.addProject(newProject)
+    setTimeout(() => {
+      setShowUpload(false)
+      navigate(`/project/${newProject.id}`)
+    }, 500)
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-root)' }}>
@@ -92,7 +73,8 @@ export default function StudentDashboard() {
             </button>
             <button
               className="btn btn-secondary"
-              onClick={() => navigate('/chat/proj-1')}
+              onClick={() => firstDoneProject && navigate(`/chat/${firstDoneProject.id}`)}
+              disabled={!firstDoneProject}
             >
               💬 Hỏi về Code
             </button>
@@ -119,7 +101,7 @@ export default function StudentDashboard() {
           <>
             {/* ── Project list ── */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '20px' }}>
-              {SAMPLE_PROJECTS.map((proj) => (
+              {projects.map((proj) => (
                 <ProjectCard key={proj.id} project={proj} onOpen={() => navigate(`/project/${proj.id}`)} />
               ))}
 
@@ -202,19 +184,35 @@ export default function StudentDashboard() {
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '20px' }}>
                 Chọn project và đặt câu hỏi. AI sẽ trả lời dựa trên knowledge graph đã phân tích.
               </p>
-              <select className="input" style={{ marginBottom: '16px' }}>
-                <option>Hệ thống Quản lý Bán hàng (Spring Boot)</option>
-                <option>Web App Quản lý Nhân sự (Node.js)</option>
+              <select
+                className="input"
+                style={{ marginBottom: '16px' }}
+                id="chat-project-select"
+              >
+                {projects.filter(p => p.status === 'done').map(p => (
+                  <option key={p.id} value={p.id}>{p.name} ({p.lang})</option>
+                ))}
               </select>
               <div style={{ fontWeight: 600, marginBottom: '12px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                 Câu hỏi gợi ý:
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                {QUICK_QUESTIONS.map(q => (
+                {[
+                  'Kiến trúc tổng thể của project này là gì?',
+                  'Luồng xử lý đăng nhập hoạt động như thế nào?',
+                  'Module nào phức tạp nhất trong project?',
+                  'Service layer được tổ chức ra sao?',
+                  'Có những design pattern nào được sử dụng?',
+                  'Cách kết nối database được xử lý như thế nào?',
+                ].map(q => (
                   <button
                     key={q}
                     className="btn btn-ghost btn-sm"
-                    onClick={() => navigate('/chat/proj-1')}
+                    onClick={() => {
+                      const sel = document.getElementById('chat-project-select') as HTMLSelectElement
+                      const pid = sel?.value || firstDoneProject?.id || 'proj-1'
+                      navigate(`/chat/${pid}`)
+                    }}
                     style={{ fontSize: '0.8rem', textAlign: 'left' }}
                   >
                     {q}
@@ -225,7 +223,11 @@ export default function StudentDashboard() {
             <button
               className="btn btn-primary"
               style={{ width: '100%', justifyContent: 'center' }}
-              onClick={() => navigate('/chat/proj-1')}
+              onClick={() => {
+                const sel = document.getElementById('chat-project-select') as HTMLSelectElement
+                const pid = sel?.value || firstDoneProject?.id || 'proj-1'
+                navigate(`/chat/${pid}`)
+              }}
             >
               💬 Mở giao diện Chat
             </button>
@@ -265,12 +267,7 @@ export default function StudentDashboard() {
                 onClick={() => setShowUpload(false)}
               >✕</button>
             </div>
-            <UploadZone onUpload={() => {
-              setTimeout(() => {
-                setShowUpload(false)
-                navigate('/project/proj-1')
-              }, 2000)
-            }} />
+            <UploadZone onUpload={handleUpload} />
           </div>
         </div>
       )}
@@ -279,7 +276,7 @@ export default function StudentDashboard() {
 }
 
 /* ── Project card ── */
-function ProjectCard({ project, onOpen }: { project: typeof SAMPLE_PROJECTS[0]; onOpen: () => void }) {
+function ProjectCard({ project, onOpen }: { project: ProjectMeta; onOpen: () => void }) {
   const statusColors = { done: '#34d399', processing: '#60a5fa', error: '#f87171' }
   const statusLabels = { done: 'Hoàn thành', processing: 'Đang phân tích...', error: 'Lỗi' }
 
@@ -316,7 +313,7 @@ function ProjectCard({ project, onOpen }: { project: typeof SAMPLE_PROJECTS[0]; 
           <div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '6px' }}>Kiến trúc tầng:</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-              {project.layers.map(l => <span key={l} className="tag">{l}</span>)}
+              {project.layerNames.map(l => <span key={l} className="tag">{l}</span>)}
             </div>
           </div>
 

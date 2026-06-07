@@ -49,6 +49,22 @@ export default function ArchitectureReport({ project, graph }: Props) {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10)
 
+  const isJava = project.lang.toLowerCase().includes('java')
+  const isReact = project.lang.toLowerCase().includes('react') || project.lang.toLowerCase().includes('typescript') || project.lang.toLowerCase().includes('javascript')
+  const isPython = project.lang.toLowerCase().includes('python')
+
+  const testDesc = isJava 
+    ? 'Phát hiện ít test files. Nên thêm JUnit/Mockito tests cho Service layer để đảm bảo chất lượng.'
+    : isReact
+    ? 'Phát hiện ít test files. Nên thêm Jest/Vitest hoặc React Testing Library để kiểm thử các component.'
+    : isPython
+    ? 'Phát hiện ít test files. Nên thêm unittest hoặc pytest để kiểm thử logic nghiệp vụ.'
+    : 'Phát hiện ít test files. Nên bổ sung unit tests để đảm bảo chất lượng mã nguồn.'
+
+  const docDesc = isJava || isPython || project.lang.toLowerCase().includes('node')
+    ? 'Bổ sung Swagger/OpenAPI hoặc Swagger UI documentation cho các REST endpoints để dễ dàng tích hợp và review.'
+    : 'Bổ sung tài liệu mã nguồn (JSDoc/TypeDoc) để các lập trình viên khác dễ dàng đọc hiểu cấu trúc dự án.'
+
   return (
     <div style={{ maxWidth: '900px', margin: '0 auto' }}>
       {/* Header */}
@@ -230,17 +246,17 @@ export default function ArchitectureReport({ project, graph }: Props) {
           {
             level: 'warning',
             title: 'Thêm Unit Tests',
-            desc: 'Phát hiện ít test files. Nên thêm JUnit/Mockito tests cho Service layer để đảm bảo chất lượng.',
+            desc: testDesc,
           },
           {
             level: 'info',
             title: 'Documentation',
-            desc: 'Bổ sung Swagger/OpenAPI documentation cho REST endpoints để dễ maintain và review.',
+            desc: docDesc,
           },
           {
             level: 'success',
             title: 'Phân tầng tốt',
-            desc: 'Kiến trúc Controller → Service → Repository được áp dụng đúng cách. Tuân thủ nguyên tắc SRP.',
+            desc: 'Kiến trúc được áp dụng phân tách rõ ràng. Tuân thủ nguyên tắc Single Responsibility Principle.',
           },
         ].map(r => {
           const colors = { warning: '#fbbf24', info: '#60a5fa', success: '#34d399' }

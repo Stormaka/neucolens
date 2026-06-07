@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 
 interface UploadZoneProps {
   onUpload: (file: File | string) => void
@@ -11,6 +11,7 @@ export default function UploadZone({ onUpload }: UploadZoneProps) {
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [stage, setStage] = useState('')
+  const pendingFileRef = useRef<File | null>(null)
 
   const STAGES = [
     'Đang giải nén project...',
@@ -22,7 +23,8 @@ export default function UploadZone({ onUpload }: UploadZoneProps) {
     'Hoàn tất! ✓',
   ]
 
-  const simulateUpload = () => {
+  const simulateUpload = (file?: File) => {
+    if (file) pendingFileRef.current = file
     setUploading(true)
     setProgress(0)
     let i = 0
@@ -33,7 +35,13 @@ export default function UploadZone({ onUpload }: UploadZoneProps) {
       i++
       if (i >= STAGES.length) {
         clearInterval(interval)
-        setTimeout(() => onUpload(mode === 'url' ? githubUrl : 'file'), 600)
+        setTimeout(() => {
+          if (mode === 'url') {
+            onUpload(githubUrl)
+          } else {
+            onUpload(pendingFileRef.current ?? 'file')
+          }
+        }, 600)
       }
     }, 700)
   }
@@ -43,13 +51,13 @@ export default function UploadZone({ onUpload }: UploadZoneProps) {
     setIsDragging(false)
     const file = e.dataTransfer.files[0]
     if (file && (file.name.endsWith('.zip') || file.name.endsWith('.tar.gz'))) {
-      simulateUpload()
+      simulateUpload(file)
     }
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) simulateUpload()
+    if (file) simulateUpload(file)
   }
 
   if (uploading) {
@@ -164,7 +172,7 @@ export default function UploadZone({ onUpload }: UploadZoneProps) {
           <button
             className="btn btn-primary"
             style={{ justifyContent: 'center' }}
-            onClick={simulateUpload}
+            onClick={() => simulateUpload()}
             disabled={!githubUrl.trim()}
           >
             🚀 Bắt đầu phân tích

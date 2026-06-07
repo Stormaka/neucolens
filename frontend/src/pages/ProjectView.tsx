@@ -4,6 +4,8 @@ import NavBar from '../components/NavBar'
 import KnowledgeGraph from '../components/KnowledgeGraph'
 import ArchitectureReport from '../components/ArchitectureReport'
 import { SAMPLE_GRAPH } from '../data/sampleGraph'
+import { projectStore } from '../data/projectStore'
+import type { ProjectMeta } from '../data/projectStore'
 
 type Tab = 'graph' | 'report' | 'tour' | 'layers'
 
@@ -13,7 +15,10 @@ export default function ProjectView() {
   const [activeTab, setActiveTab] = useState<Tab>('graph')
   const [selectedNode, setSelectedNode] = useState<any>(null)
 
-  const project = {
+  // Lấy project từ store, nếu không thấy dùng fallback
+  const storedProject = id ? projectStore.getById(id) : undefined
+
+  const project: ProjectMeta = storedProject ?? {
     id: id || 'proj-1',
     name: 'Hệ thống Quản lý Bán hàng Online',
     student: 'Nguyễn Văn An',
@@ -21,7 +26,20 @@ export default function ProjectView() {
     lang: 'Java · Spring Boot',
     analyzedAt: '2026-06-05 14:32',
     commit: 'a3f8b2c',
+    nodes: 87,
+    edges: 134,
+    layers: 4,
+    score: 82,
+    status: 'done',
+    tags: ['spring-boot', 'mysql'],
+    layerNames: ['API', 'Service', 'Repository', 'Entity'],
+    graphSource: 'sample',
   }
+
+  // Graph data: dùng SAMPLE_GRAPH cho proj mẫu, tạo dynamic cho proj upload
+  const graphData = project.graphSource === 'uploaded'
+    ? buildDynamicGraph(project)
+    : SAMPLE_GRAPH
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-root)' }}>
@@ -110,7 +128,7 @@ export default function ProjectView() {
             {/* Graph area */}
             <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
               <KnowledgeGraph
-                data={SAMPLE_GRAPH}
+                data={graphData}
                 onNodeSelect={setSelectedNode}
                 selectedNodeId={selectedNode?.id}
               />
@@ -138,7 +156,7 @@ export default function ProjectView() {
               {selectedNode ? (
                 <NodeInfoPanel node={selectedNode} />
               ) : (
-                <GraphSummaryPanel />
+                <GraphSummaryPanel graph={graphData} project={project} />
               )}
             </div>
           </>
@@ -146,19 +164,19 @@ export default function ProjectView() {
 
         {activeTab === 'report' && (
           <div style={{ flex: 1, overflow: 'auto', padding: '32px' }}>
-            <ArchitectureReport project={project} graph={SAMPLE_GRAPH} />
+            <ArchitectureReport project={project} graph={graphData} />
           </div>
         )}
 
         {activeTab === 'tour' && (
           <div style={{ flex: 1, overflow: 'auto', padding: '32px' }}>
-            <GuidedTour tour={SAMPLE_GRAPH.tour} />
+            <GuidedTour tour={graphData.tour} />
           </div>
         )}
 
         {activeTab === 'layers' && (
           <div style={{ flex: 1, overflow: 'auto', padding: '32px' }}>
-            <LayersView layers={SAMPLE_GRAPH.layers} nodes={SAMPLE_GRAPH.nodes} />
+            <LayersView layers={graphData.layers} nodes={graphData.nodes} />
           </div>
         )}
       </div>
@@ -166,7 +184,242 @@ export default function ProjectView() {
   )
 }
 
+// Tạo dynamic graph từ metadata của project upload — với đầy đủ nodes & edges đẹp
+function buildDynamicGraph(project: ProjectMeta): typeof SAMPLE_GRAPH {
+  const lang = project.lang.split(' · ')[0]
+  const framework = project.lang.split(' · ')[1] ?? ''
+  const ext = lang.includes('Java') ? 'java' : lang.includes('Python') ? 'py' : lang.includes('PHP') ? 'php' : 'ts'
+  const isJava = ext === 'java'
+  const isPy = ext === 'py'
+
+  // ── Xác định tên nhóm dựa trên layerNames ──
+  const layerNames = project.layerNames
+
+  // Đặt tên node thực tế theo ngôn ngữ
+  const domainEntities = ['User', 'Product', 'Order', 'Cart', 'Category', 'Payment', 'Notification', 'Review']
+  const controllers = domainEntities.slice(0, 5).map(e => `${e}Controller`)
+  const services = domainEntities.slice(0, 6).map(e => `${e}Service`)
+  const repos = domainEntities.slice(0, 5).map(e => `${e}Repository`)
+  const entities = domainEntities.slice(0, 5)
+  const dtos = ['LoginRequest', 'RegisterRequest', 'ProductDTO', 'OrderDTO', 'UserDTO']
+  const configs = isJava
+    ? ['SecurityConfig', 'DatabaseConfig', 'CorsConfig', 'JwtTokenProvider', 'MainApplication']
+    : isPy
+    ? ['settings', 'urls', 'wsgi', 'middleware', 'serializers']
+    : ['authMiddleware', 'dbConfig', 'corsConfig', 'jwtHelper', 'app']
+  const endpoints = [
+    'POST /api/auth/login', 'POST /api/auth/register',
+    'GET /api/products', 'POST /api/orders',
+    'GET /api/users/profile', 'DELETE /api/cart/:id',
+  ]
+
+  const nodes: any[] = []
+
+  // Gán nodes theo layer pattern
+  layerNames.forEach((layer, _li) => {
+    const lower = layer.toLowerCase()
+    if (lower.includes('api') || lower.includes('controller') || lower.includes('frontend')) {
+      controllers.forEach((name, i) => nodes.push({
+        id: name, name, type: 'class',
+        filePath: isJava ? `src/main/java/controller/${name}.java` : `src/${lower}/${name}.${ext}`,
+        summary: `Xử lý HTTP requests cho module ${name.replace('Controller', '')}. Nhận input từ client, validate, chuyển xuống Service layer.`,
+        tags: ['controller', name.replace('Controller', '').toLowerCase(), 'rest'],
+        complexity: i === 2 ? 'complex' : i % 2 === 0 ? 'moderate' : 'simple',
+        languageNotes: isJava ? '@RestController + @RequestMapping định nghĩa REST endpoints.' : undefined,
+      }))
+      endpoints.forEach((ep, i) => nodes.push({
+        id: `endpoint_${i}`, name: ep, type: 'endpoint',
+        summary: `REST endpoint: ${ep}`,
+        tags: ['endpoint', ep.includes('POST') ? 'post' : 'get'],
+        complexity: ep.includes('order') ? 'complex' : 'simple',
+      }))
+    } else if (lower.includes('service') || lower.includes('business')) {
+      services.forEach((name, i) => nodes.push({
+        id: name, name, type: 'service',
+        filePath: isJava ? `src/main/java/service/${name}.java` : `src/services/${name}.${ext}`,
+        summary: `Business logic cho module ${name.replace('Service', '')}. Xử lý nghiệp vụ, validation và orchestrate các operations.`,
+        tags: ['service', name.replace('Service', '').toLowerCase()],
+        complexity: i <= 1 ? 'complex' : 'moderate',
+        languageNotes: isJava ? '@Service + @Transactional đảm bảo tính atomicity.' : undefined,
+      }))
+    } else if (lower.includes('repository') || lower.includes('data')) {
+      repos.forEach((name, i) => nodes.push({
+        id: name, name, type: 'class',
+        filePath: isJava ? `src/main/java/repository/${name}.java` : `src/repositories/${name}.${ext}`,
+        summary: `${isJava ? 'JPA Repository' : 'Database access'} cho ${name.replace('Repository', '')} entity. CRUD + custom queries.`,
+        tags: ['repository', isJava ? 'jpa' : 'database', name.replace('Repository', '').toLowerCase()],
+        complexity: i >= 2 ? 'moderate' : 'simple',
+      }))
+    } else if (lower.includes('entity') || lower.includes('model') || lower.includes('database')) {
+      entities.forEach((name, i) => nodes.push({
+        id: name, name, type: 'table',
+        filePath: isJava ? `src/main/java/entity/${name}.java` : `src/models/${name}.${ext}`,
+        summary: `${isJava ? '@Entity JPA' : 'Database model'} đại diện bảng ${name.toLowerCase()}s trong database.`,
+        tags: ['entity', name.toLowerCase(), isJava ? 'jpa' : 'model'],
+        complexity: i >= 2 ? 'moderate' : 'simple',
+      }))
+      dtos.forEach(name => nodes.push({
+        id: `dto_${name}`, name, type: 'schema',
+        filePath: `src/${isJava ? 'main/java/dto' : 'dto'}/${name}.${ext}`,
+        summary: `DTO/Schema cho ${name} — transfer data giữa các tầng.`,
+        tags: ['dto', 'schema'],
+        complexity: 'simple',
+      }))
+    }
+  })
+
+  // Fallback nếu không map được: tạo generic nodes
+  if (nodes.length === 0) {
+    for (let i = 0; i < Math.min(project.nodes, 30); i++) {
+      nodes.push({
+        id: `node_${i}`, name: `Component${i + 1}`, type: i % 4 === 0 ? 'service' : i % 3 === 0 ? 'table' : 'class',
+        filePath: `src/component${i + 1}.${ext}`,
+        summary: `Component ${i + 1} của project.`,
+        tags: ['component'],
+        complexity: i % 3 === 0 ? 'complex' : 'simple',
+      })
+    }
+  }
+
+  // Configs luôn có
+  configs.forEach((name, i) => {
+    if (!nodes.find(n => n.id === name)) {
+      nodes.push({
+        id: name, name, type: i < 3 ? 'config' : 'class',
+        filePath: isJava ? `src/main/java/config/${name}.java` : `src/config/${name}.${ext}`,
+        summary: `Cấu hình hệ thống: ${name}. Thiết lập môi trường, bảo mật và kết nối.`,
+        tags: ['config', framework.toLowerCase()].filter(Boolean),
+        complexity: i === 0 ? 'complex' : 'simple',
+      })
+    }
+  })
+
+  // ── Tạo edges phong phú ──
+  const edges: any[] = []
+  const findNode = (id: string) => nodes.find(n => n.id === id)
+
+  // Controller → Service
+  controllers.forEach((ctrl, i) => {
+    const svc = services[i % services.length]
+    if (findNode(ctrl) && findNode(svc))
+      edges.push({ source: ctrl, target: svc, type: 'calls', direction: 'forward', weight: 0.9 })
+  })
+
+  // Service → Repository
+  services.forEach((svc, i) => {
+    const repo = repos[i % repos.length]
+    if (findNode(svc) && findNode(repo))
+      edges.push({ source: svc, target: repo, type: 'calls', direction: 'forward', weight: 0.8 })
+  })
+
+  // Cross-service calls
+  if (findNode('OrderService') && findNode('ProductService'))
+    edges.push({ source: 'OrderService', target: 'ProductService', type: 'calls', direction: 'forward', weight: 0.7 })
+  if (findNode('OrderService') && findNode('UserService'))
+    edges.push({ source: 'OrderService', target: 'UserService', type: 'calls', direction: 'forward', weight: 0.6 })
+  if (findNode('CartService') && findNode('ProductService'))
+    edges.push({ source: 'CartService', target: 'ProductService', type: 'calls', direction: 'forward', weight: 0.65 })
+  if (findNode('NotificationService') && findNode('OrderService'))
+    edges.push({ source: 'OrderService', target: 'NotificationService', type: 'calls', direction: 'forward', weight: 0.5 })
+
+  // Repository → Entity
+  repos.forEach((repo, i) => {
+    const entity = entities[i % entities.length]
+    if (findNode(repo) && findNode(entity))
+      edges.push({ source: repo, target: entity, type: 'reads_from', direction: 'forward', weight: 0.9 })
+  })
+
+  // Endpoint → Controller
+  endpoints.forEach((ep, i) => {
+    const ctrl = controllers[i % controllers.length]
+    const epId = `endpoint_${i}`
+    if (findNode(epId) && findNode(ctrl))
+      edges.push({ source: epId, target: ctrl, type: 'routes', direction: 'forward', weight: 0.85 })
+  })
+
+  // Controller → DTO
+  const dtoEdges: [string, string][] = [
+    ['UserController', 'dto_LoginRequest'], ['UserController', 'dto_RegisterRequest'],
+    ['ProductController', 'dto_ProductDTO'], ['OrderController', 'dto_OrderDTO'],
+  ]
+  dtoEdges.forEach(([src, tgt]) => {
+    if (findNode(src) && findNode(tgt))
+      edges.push({ source: src, target: tgt, type: 'validates', direction: 'forward', weight: 0.7 })
+  })
+
+  // Config dependencies
+  const jwtId = configs[3] ?? configs[0]
+  const secId = configs[0]
+  if (findNode('UserService') && findNode(jwtId))
+    edges.push({ source: 'UserService', target: jwtId, type: 'calls', direction: 'forward', weight: 0.8 })
+  if (findNode(secId) && findNode(jwtId) && secId !== jwtId)
+    edges.push({ source: secId, target: jwtId, type: 'configures', direction: 'forward', weight: 0.7 })
+  repos.slice(0, 2).forEach(repo => {
+    const dbCfg = configs[1] ?? configs[0]
+    if (findNode(dbCfg) && findNode(repo))
+      edges.push({ source: dbCfg, target: repo, type: 'configures', direction: 'forward', weight: 0.5 })
+  })
+
+  // MainApp → Config
+  const mainId = configs[4] ?? configs[0]
+  if (findNode(mainId)) {
+    configs.slice(0, 3).forEach(cfg => {
+      if (cfg !== mainId && findNode(cfg))
+        edges.push({ source: mainId, target: cfg, type: 'depends_on', direction: 'forward', weight: 0.6 })
+    })
+  }
+
+  // ── Layers ──
+  const builtLayers = layerNames.map((name, i) => {
+    const lower = name.toLowerCase()
+    let ids: string[] = []
+    if (lower.includes('api') || lower.includes('controller') || lower.includes('frontend'))
+      ids = [...controllers.map(c => c), ...endpoints.map((_, i) => `endpoint_${i}`)]
+    else if (lower.includes('service') || lower.includes('business'))
+      ids = services.map(s => s)
+    else if (lower.includes('repository') || lower.includes('data'))
+      ids = repos.map(r => r)
+    else if (lower.includes('entity') || lower.includes('model') || lower.includes('database'))
+      ids = [...entities, ...dtos.map(d => `dto_${d}`)]
+    return { id: `layer-${i}`, name: `${name} Layer`, description: `Tầng ${name} của hệ thống ${project.name}.`, nodeIds: ids.filter(id => findNode(id)) }
+  })
+
+  // Thêm layer config nếu chưa có
+  const cfgLayer = {
+    id: 'layer-config', name: 'Infrastructure & Config',
+    description: 'Cấu hình hệ thống, bảo mật, database.',
+    nodeIds: configs.filter(c => findNode(c)),
+  }
+  builtLayers.push(cfgLayer)
+
+  // ── Tour ──
+  const tour = builtLayers.map((layer, i) => ({
+    order: i + 1,
+    title: layer.name.replace(' Layer', ''),
+    description: `Khám phá ${layer.name} của project "${project.name}". ${layer.description}`,
+    nodeIds: layer.nodeIds.slice(0, 4),
+    languageLesson: `Tìm hiểu cấu trúc và design pattern trong ${layer.name}.`,
+  }))
+
+  return {
+    version: '1.0.0',
+    project: {
+      name: project.name,
+      languages: [lang.toLowerCase()],
+      frameworks: [framework.toLowerCase()].filter(Boolean),
+      description: `${project.name} — KLTN NEU`,
+      analyzedAt: new Date().toISOString(),
+      gitCommitHash: project.commit,
+    },
+    nodes,
+    edges,
+    layers: builtLayers,
+    tour,
+  }
+}
+
 function NodeInfoPanel({ node }: { node: any }) {
+
   const typeColors: Record<string, string> = {
     file: 'var(--node-file)',
     function: 'var(--node-function)',
@@ -249,12 +502,12 @@ function NodeInfoPanel({ node }: { node: any }) {
   )
 }
 
-function GraphSummaryPanel() {
+function GraphSummaryPanel({ graph, project }: { graph: typeof SAMPLE_GRAPH; project: ProjectMeta }) {
   const items = [
-    { icon: '🌐', label: 'Nodes', value: '87', desc: 'file, class, function, service' },
-    { icon: '🔗', label: 'Edges', value: '134', desc: 'imports, calls, inherits...' },
-    { icon: '🏗️', label: 'Tầng', value: '4', desc: 'Controller, Service, Repo, Entity' },
-    { icon: '📚', label: 'Tour steps', value: '5', desc: 'hướng dẫn theo thứ tự học' },
+    { icon: '🌐', label: 'Nodes', value: String(graph.nodes.length), desc: 'file, class, function, service' },
+    { icon: '🔗', label: 'Edges', value: String(graph.edges.length), desc: 'imports, calls, inherits...' },
+    { icon: '🏗️', label: 'Tầng', value: String(graph.layers.length), desc: project.layerNames.join(', ') },
+    { icon: '📚', label: 'Tour steps', value: String(graph.tour.length), desc: 'hướng dẫn theo thứ tự học' },
   ]
   return (
     <div>
