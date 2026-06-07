@@ -5,9 +5,16 @@
   "private": true,
   "scripts": {
     "install-all": "npm.cmd install && npm.cmd install --prefix backend && npm.cmd install --prefix frontend",
+    "build": "npm run build --prefix frontend",
     "dev:backend": "npm.cmd run dev --prefix backend",
     "dev:frontend": "npm.cmd run dev --prefix frontend",
     "dev": "concurrently \"npm.cmd run dev:backend\" \"npm.cmd run dev:frontend\""
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "uuid": "^10.0.0"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

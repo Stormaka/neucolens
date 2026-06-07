@@ -237,8 +237,9 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Lỗi server nội bộ' })
 })
 
-app.listen(PORT, () => {
-  console.log(`
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`
 ╔═══════════════════════════════════════════╗
 ║  NEU CodeLens API Server                  ║
 ║  Đại học Kinh tế Quốc dân                 ║
@@ -246,5 +247,8 @@ app.listen(PORT, () => {
 ║  Running on: http://localhost:${PORT}         ║
 ║  Health:     http://localhost:${PORT}/api/health ║
 ╚═══════════════════════════════════════════╝
-  `)
-})
+    `)
+  })
+}
+
+export default app
