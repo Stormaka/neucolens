@@ -1,0 +1,23 @@
+services:
+  # NEU-CodeLens Backend — Storm v4
+  - type: web
+    name: neu-codelens-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm run start:prod
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_PATH
+        value: /var/data/skillslab.db
+      - key: GEMINI_API_KEY
+        sync: false        # Điền thủ công trên Render dashboard
+      - key: JWT_SECRET
+        sync: false        # Điền thủ công trên Render dashboard
+    disk:
+      name: skillslab-db
+      mountPath: /var/data
+      sizeGB: 1

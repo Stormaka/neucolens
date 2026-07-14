@@ -65,8 +65,25 @@ export default function ArchitectureReport({ project, graph }: Props) {
     ? 'Bổ sung Swagger/OpenAPI hoặc Swagger UI documentation cho các REST endpoints để dễ dàng tích hợp và review.'
     : 'Bổ sung tài liệu mã nguồn (JSDoc/TypeDoc) để các lập trình viên khác dễ dàng đọc hiểu cấu trúc dự án.'
 
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(window.location.href).then(() => {
+      // Simple visual feedback via title briefly
+      const orig = document.title
+      document.title = '✔ Đã copy link!'
+      setTimeout(() => { document.title = orig }, 1500)
+    }).catch(() => {
+      // Fallback for older browsers
+      const ta = document.createElement('textarea')
+      ta.value = window.location.href
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+    })
+  }
+
   return (
-    <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+    <div className="print-area" style={{ maxWidth: '900px', margin: '0 auto' }}>
       {/* Header */}
       <div style={{
         background: 'linear-gradient(135deg, rgba(192,57,43,0.12), rgba(10,11,14,0))',
@@ -95,13 +112,10 @@ export default function ArchitectureReport({ project, graph }: Props) {
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button className="btn btn-primary btn-sm" onClick={() => window.print()}>
-            🖨️ In báo cáo
+            🖨️ In / Xuất PDF
           </button>
-          <button className="btn btn-secondary btn-sm">
-            📤 Xuất PDF
-          </button>
-          <button className="btn btn-secondary btn-sm">
-            📋 Copy link
+          <button className="btn btn-secondary btn-sm" onClick={handleCopyLink}>
+            📋 Copy link báo cáo
           </button>
         </div>
       </div>

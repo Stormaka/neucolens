@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>NEU-CodeLens Skills Lab — LLM + Understand-Anything</title>
+<meta name="description" content="Hệ thống phân tích năng lực lập trình sinh viên bằng LLM + Understand-Anything tại Đại học Kinh tế Quốc dân">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --r:#c0392b;--rl:#e74c3c;--rg:rgba(192,57,43,.32);
+  --gn:#10b981;--bl:#60a5fa;--pu:#a78bfa;--yw:#fbbf24;--or:#fb923c;
+  --bg0:#07090c;--bg1:#0d1018;--bg2:#13161e;--bg3:#191d27;--bg4:#1f2330;
+  --gl:rgba(255,255,255,.04);--gl2:rgba(255,255,255,.07);--gl3:rgba(255,255,255,.11);
+  --b1:rgba(255,255,255,.06);--b2:rgba(255,255,255,.12);--b3:rgba(255,255,255,.22);
+  --t1:#eef0f5;--t2:#8e98a8;--t3:#525c6b;
+  --r6:6px;--r10:10px;--r14:14px;--r20:20px;
+  --sh1:0 2px 10px rgba(0,0,0,.5);--sh2:0 8px 28px rgba(0,0,0,.6);--sh3:0 16px 48px rgba(0,0,0,.7);
+  --mono:'JetBrains Mono',monospace;--sans:'Inter',-apple-system,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--sans);background:var(--bg0);color:var(--t1);-webkit-font-smoothing:antialiased;min-height:100vh;overflow-x:hidden}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--bg0)}
+::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:99px}
+.page{display:none;flex-direction:column;min-height:100vh}
+.page.active{display:flex}
+/* Card */
+.card{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r14);padding:22px;position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.018) 0%,transparent 55%);pointer-events:none}
+.card-sm{padding:16px}
+.card-hover{transition:all .22s;cursor:pointer}
+.card-hover:hover{border-color:var(--b2);background:var(--bg3);transform:translateY(-1px);box-shadow:var(--sh2)}
+/* Nav */
+.nav{background:rgba(7,9,12,.88);backdrop-filter:blur(20px);border-bottom:1px solid var(--b1);padding:0 24px;height:58px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.nav-brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:1.05rem}
+.nav-logo{width:30px;height:30px;background:linear-gradient(135deg,var(--r),var(--rl));border-radius:var(--r6);display:flex;align-items:center;justify-content:center;font-size:.95rem;flex-shrink:0}
+.nav-right{display:flex;align-items:center;gap:10px}
+.nav-avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.78rem;font-weight:700;flex-shrink:0}
+/* Tabs */
+.tabs{display:flex;gap:2px;background:var(--bg3);border-radius:var(--r10);padding:3px;width:fit-content}
+.tab{padding:7px 16px;border-radius:var(--r6);border:none;background:transparent;color:var(--t2);font-size:.82rem;font-weight:500;cursor:pointer;transition:all .18s;font-family:var(--sans);white-space:nowrap}
+.tab.active{background:var(--bg0);color:var(--t1);box-shadow:var(--sh1)}
+.tab-content{display:none}.tab-content.active{display:block}
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:var(--r6);border:none;font-family:var(--sans);font-size:.83rem;font-weight:600;cursor:pointer;transition:all .18s;white-space:nowrap}
+.btn-primary{background:linear-gradient(135deg,var(--r),var(--rl));color:#fff;box-shadow:0 4px 14px rgba(192,57,43,.38)}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(192,57,43,.5)}
+.btn-secondary{background:var(--gl3);color:var(--t1);border:1px solid var(--b2)}
+.btn-secondary:hover{background:var(--bg4);border-color:var(--b3)}
+.btn-ghost{background:transparent;color:var(--t2);border:1px solid var(--b1)}
+.btn-ghost:hover{background:var(--gl);color:var(--t1)}
+.btn-sm{padding:5px 11px;font-size:.76rem}
+.btn-danger{background:linear-gradient(135deg,#7f1d1d,#ef4444);color:#fff}
+/* Input */
+.input{background:var(--bg3);border:1px solid var(--b2);border-radius:var(--r6);color:var(--t1);font-family:var(--sans);font-size:.855rem;padding:9px 13px;width:100%;outline:none;transition:all .18s}
+.input:focus{border-color:var(--r);box-shadow:0 0 0 3px rgba(192,57,43,.14)}
+.input::placeholder{color:var(--t3)}
+textarea.input{resize:vertical;min-height:80px}
+select.input{cursor:pointer}
+.label{font-size:.73rem;font-weight:700;color:var(--t3);letter-spacing:.04em;margin-bottom:5px;text-transform:uppercase}
+/* Badges */
+.badge{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:99px;font-size:.7rem;font-weight:700}
+.bdr{background:rgba(192,57,43,.18);color:#f87171;border:1px solid rgba(192,57,43,.3)}
+.bdg{background:rgba(16,185,129,.14);color:#34d399;border:1px solid rgba(16,185,129,.28)}
+.bdb{background:rgba(96,165,250,.14);color:#93c5fd;border:1px solid rgba(96,165,250,.28)}
+.bdy{background:rgba(251,191,36,.14);color:#fbbf24;border:1px solid rgba(251,191,36,.28)}
+.bdp{background:rgba(167,139,250,.14);color:#c4b5fd;border:1px solid rgba(167,139,250,.28)}
+.bdn{background:rgba(255,255,255,.06);color:var(--t2);border:1px solid var(--b1)}
+/* Progress */
+.prog-wrap{background:var(--bg4);border-radius:99px;height:5px;overflow:hidden}
+.prog-bar{height:100%;border-radius:99px;transition:width .55s cubic-bezier(.4,0,.2,1)}
+/* Stats */
+.stat-card{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r14);padding:18px;display:flex;justify-content:space-between;align-items:center}
+.stat-val{font-size:1.75rem;font-weight:800;line-height:1;margin-top:3px}
+.stat-lbl{font-size:.68rem;font-weight:700;color:var(--t3);letter-spacing:.05em;text-transform:uppercase}
+.stat-icon{width:42px;height:42px;border-radius:var(--r10);display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0}
+/* Student row */
+.sv-row{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:var(--r10);cursor:pointer;transition:all .18s;border:1px solid transparent;margin-bottom:3px}
+.sv-row:hover{background:var(--gl2);border-color:var(--b1)}
+.sv-row.sel{background:rgba(192,57,43,.1);border-color:rgba(192,57,43,.28)}
+.sv-av{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.82rem;flex-shrink:0}
+/* Timeline */
+.tl{display:flex;flex-direction:column}
+.tl-item{display:flex;gap:12px;padding:10px 0;position:relative}
+.tl-item:not(:last-child)::after{content:'';position:absolute;left:14px;top:38px;bottom:-4px;width:1px;background:var(--b1)}
+.tl-dot{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.78rem;flex-shrink:0;border:2px solid transparent}
+.tl-body{flex:1;min-width:0}
+/* Code block */
+.code-block{background:var(--bg0);border:1px solid var(--b1);border-radius:var(--r10);overflow:hidden}
+.code-hdr{padding:9px 14px;background:var(--bg3);border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:8px;font-size:.72rem;font-weight:700;color:var(--t2)}
+.code-body{padding:14px 16px;font-family:var(--mono);font-size:.79rem;line-height:1.75;color:#cdd6f4;overflow-x:auto;max-height:260px;overflow-y:auto}
+.kw{color:#cba6f7}.fn{color:#89b4fa}.str{color:#a6e3a1}.num{color:#fab387}.cmt{color:#585b70;font-style:italic}.pp{color:#f38ba8}
+/* Pipeline */
+.pipe-step{display:flex;align-items:center;gap:11px;padding:10px 14px;border-radius:var(--r10);border:1px solid var(--b1);background:var(--bg3);transition:all .25s;margin-bottom:7px}
+.pipe-step.active{border-color:rgba(192,57,43,.4);background:rgba(192,57,43,.07)}
+.pipe-step.done{border-color:rgba(16,185,129,.28);background:rgba(16,185,129,.06)}
+.pipe-icon{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.88rem;flex-shrink:0;transition:all .25s}
+.spin{width:16px;height:16px;border:2px solid var(--b2);border-top-color:var(--rl);border-radius:50%;animation:sp .65s linear infinite;display:inline-block}
+@keyframes sp{to{transform:rotate(360deg)}}
+/* Feedback cards */
+.fb{border-radius:var(--r14);padding:16px;border-left:3px solid}
+.fb-pass{background:rgba(16,185,129,.07);border-color:#10b981}
+.fb-fail{background:rgba(248,113,113,.07);border-color:#f87171}
+.fb-warn{background:rgba(251,191,36,.07);border-color:#fbbf24}
+.fb-ai{background:rgba(249,115,22,.1);border-color:#f97316}
+/* Concept bar */
+.cbar{display:flex;align-items:center;gap:9px;margin-bottom:9px}
+.cbar-lbl{font-size:.74rem;font-weight:600;color:var(--t2);min-width:78px}
+.cbar-pct{font-size:.78rem;font-weight:700;min-width:34px;text-align:right}
+/* Heatmap */
+.hm-cell{border-radius:4px;transition:all .18s;position:relative;cursor:default}
+/* Misc tag */
+.misc{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.2);border-radius:var(--r6);padding:7px 11px;font-size:.75rem;color:#fca5a5;margin-bottom:6px;display:flex;align-items:flex-start;gap:7px;line-height:1.5}
+/* Modal */
+.ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(8px);z-index:200;align-items:flex-start;justify-content:flex-end}
+.ov.open{display:flex}
+.mpanel{background:var(--bg2);border-left:1px solid var(--b1);height:100vh;width:min(680px,95vw);overflow-y:auto;animation:sIn .28s ease}
+@keyframes sIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
+.mhdr{padding:20px 24px;border-bottom:1px solid var(--b1);position:sticky;top:0;background:var(--bg2);z-index:1;display:flex;justify-content:space-between;align-items:flex-start}
+.mbody{padding:24px}
+.close-btn{width:30px;height:30px;border-radius:var(--r6);background:var(--gl);border:1px solid var(--b1);color:var(--t2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:.9rem;transition:all .18s}
+.close-btn:hover{background:var(--gl2);color:var(--t1)}
+/* Modal2 (center) */
+.ov2{display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(8px);z-index:200;align-items:center;justify-content:center;padding:20px}
+.ov2.open{display:flex}
+.mp2{background:var(--bg2);border:1px solid var(--b2);border-radius:var(--r20);width:min(540px,100%);max-height:90vh;overflow-y:auto;animation:fUp .25s ease}
+@keyframes fUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+/* Toast */
+#toast{position:fixed;top:70px;right:22px;background:var(--bg3);border:1px solid var(--gn);border-radius:var(--r10);padding:10px 16px;font-size:.82rem;font-weight:600;color:var(--gn);box-shadow:var(--sh2);z-index:999;transform:translateX(120%);transition:transform .35s cubic-bezier(.34,1.56,.64,1);max-width:300px}
+#toast.show{transform:translateX(0)}
+/* Landing */
+#page-landing{background:var(--bg0);position:relative;overflow:hidden}
+#page-landing::before{content:'';position:absolute;width:650px;height:650px;border-radius:50%;background:radial-gradient(circle,rgba(192,57,43,.1) 0%,transparent 70%);top:-180px;left:-120px;pointer-events:none;animation:float 8s ease-in-out infinite}
+#page-landing::after{content:'';position:absolute;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,rgba(167,139,250,.07) 0%,transparent 70%);bottom:-80px;right:-80px;pointer-events:none;animation:float 10s ease-in-out infinite reverse}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-20px)}}
+.land-inner{max-width:980px;margin:0 auto;padding:56px 24px;position:relative;z-index:1}
+.role-cards{display:grid;grid-template-columns:1fr 1fr;gap:18px;max-width:740px;margin:0 auto 40px}
+.role-card{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r20);padding:28px;cursor:pointer;transition:all .28s;position:relative;overflow:hidden}
+.role-card::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.025) 0%,transparent 55%);pointer-events:none}
+.role-card:hover{border-color:var(--r);transform:translateY(-3px);box-shadow:0 14px 40px rgba(192,57,43,.2)}
+.role-icon{width:52px;height:52px;border-radius:var(--r14);display:flex;align-items:center;justify-content:center;font-size:1.5rem;margin-bottom:14px}
+.feat-list{margin-top:10px;display:flex;flex-direction:column;gap:5px}
+.feat-list li{display:flex;align-items:flex-start;gap:7px;font-size:.76rem;color:var(--t2);list-style:none;line-height:1.4}
+.feat-list li::before{content:'✓';color:var(--gn);font-weight:800;flex-shrink:0;margin-top:1px}
+.demo-box{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r20);padding:24px;max-width:400px;margin:0 auto}
+.demo-acc{background:var(--bg3);border:1px solid var(--b1);border-radius:var(--r10);padding:10px 13px;cursor:pointer;transition:all .18s;font-size:.8rem;margin-bottom:7px}
+.demo-acc:hover{border-color:var(--r);background:var(--bg4)}
+.mono{font-family:var(--mono)}
+/* Main layout */
+.main{flex:1;max-width:1440px;width:100%;margin:0 auto;padding:24px 22px}
+/* EWS alert */
+.ews{display:flex;gap:11px;align-items:flex-start;padding:12px 14px;border-radius:var(--r10);margin-bottom:9px}
+.ews-d{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.18)}
+.ews-w{background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.18)}
+.ews-icon{font-size:1.1rem;flex-shrink:0;margin-top:1px}
+/* Session card */
+.sess-card{background:var(--bg3);border:1px solid var(--b1);border-radius:var(--r10);padding:14px;cursor:pointer;transition:all .18s}
+.sess-card:hover{border-color:var(--b2);background:var(--bg4)}
+.sess-card.act{border-color:var(--r);background:rgba(192,57,43,.07)}
+/* Tier score block */
+.tier-blk{background:var(--bg3);border-radius:var(--r10);padding:12px;text-align:center;border-top:2px solid}
+/* Responsive */
+@media(max-width:768px){
+  .role-cards{grid-template-columns:1fr}
+  .g4{grid-template-columns:repeat(2,1fr)!important}
+  .g3{grid-template-columns:1fr!important}
+  .tl-layout{grid-template-columns:1fr!important}
+  .mpanel{width:100%}
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════
+     LANDING PAGE
+══════════════════════════════════════════════════════════ -->
+<div id="page-landing" class="page active">
+  <div class="land-inner">
+    <!-- Hero -->
+    <div style="text-align:center;margin-bottom:52px">
+      <div style="display:inline-flex;align-items:center;gap:7px;background:rgba(192,57,43,.1);border:1px solid rgba(192,57,43,.22);border-radius:99px;padding:5px 14px;font-size:.78rem;font-weight:600;color:var(--rl);margin-bottom:20px">
+        🔬 LLM + Understand-Anything · NEU Research 2026
+      </div>
+      <h1 style="font-size:clamp(1.9rem,5vw,3rem);font-weight:900;line-height:1.1;margin-bottom:14px;letter-spacing:-.02em">
+        Hiểu <span style="background:linear-gradient(135deg,var(--rl),var(--pu));-webkit-background-clip:text;-webkit-text-fill-color:transparent">Năng lực Lập trình</span><br>Sinh viên qua Từng Dòng Code
+      </h1>
+      <p style="font-size:.95rem;color:var(--t2);max-width:580px;margin:0 auto 12px;line-height:1.7">
+        Pipeline phân tích tích lũy theo thời gian — từ Tính đúng đắn → Chất lượng Code → Tư duy Lập trình — được hỗ trợ bởi LLM & Understand-Anything tại NEU.
+      </p>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:8px">
+        <span class="badge bdr">🧠 3-Tier Rubric Framework</span>
+        <span class="badge bdg">📊 Dynamic Competency Profile</span>
+        <span class="badge bdb">🚨 Early Warning System</span>
+        <span class="badge bdp">🤖 AI-Code Detection</span>
+      </div>
+    </div>
+
+    <!-- Role Cards -->
+    <div class="role-cards" style="margin-bottom:36px">
+      <div class="role-card" onclick="loginAs('teacher')">
+        <div class="role-icon" style="background:rgba(192,57,43,.14)">👨‍🏫</div>
+        <h3 style="font-size:1.05rem;font-weight:700;margin-bottom:7px">Giảng viên</h3>
+        <p style="font-size:.8rem;color:var(--t2);line-height:1.6;margin-bottom:4px">Quản lý lớp học, phân tích năng lực sinh viên, cảnh báo sớm nguy cơ.</p>
+        <ul class="feat-list">
+          <li>Concept Heatmap toàn lớp</li>
+          <li>Hồ sơ Năng lực từng sinh viên</li>
+          <li>EWS — phát hiện nguy cơ sớm</li>
+          <li>Phát hiện AI-generated code</li>
+          <li>Quản lý bài tập theo buổi</li>
+        </ul>
+        <button class="btn btn-primary" style="width:100%;margin-top:18px;justify-content:center">Vào với vai Giảng viên →</button>
+      </div>
+      <div class="role-card" onclick="loginAs('student')">
+        <div class="role-icon" style="background:rgba(96,165,250,.14)">👨‍🎓</div>
+        <h3 style="font-size:1.05rem;font-weight:700;margin-bottom:7px">Sinh viên</h3>
+        <p style="font-size:.8rem;color:var(--t2);line-height:1.6;margin-bottom:4px">Xem bài tập, nộp code, nhận feedback LLM và theo dõi hồ sơ năng lực.</p>
+        <ul class="feat-list">
+          <li>Danh sách bài tập & deadline</li>
+          <li>Nộp code + pipeline realtime 6 bước</li>
+          <li>Phản hồi LLM theo Rubric 3 Tầng</li>
+          <li>Radar Chart 5 khái niệm</li>
+          <li>Misconceptions tích lũy</li>
+        </ul>
+        <button class="btn btn-secondary" style="width:100%;margin-top:18px;justify-content:center">Vào với vai Sinh viên →</button>
+      </div>
+    </div>
+
+    <!-- Demo accounts -->
+    <div class="demo-box">
+      <p style="font-size:.85rem;font-weight:700;margin-bottom:4px">🎯 Đăng nhập Demo nhanh</p>
+      <p style="font-size:.75rem;color:var(--t2);margin-bottom:14px">Chọn tài khoản để trải nghiệm ngay — không cần đăng ký</p>
+      <div class="demo-acc" onclick="loginAs('teacher')">
+        <b>👨‍🏫 TS. Nguyễn Minh Đức</b> — Giảng viên lớp LTCB-2026A<br>
+        <span class="mono" style="font-size:.72rem;color:var(--rl)">ts.nguyenminhduc@neu.edu.vn</span>
+      </div>
+      <div class="demo-acc" onclick="loginAs('student')">
+        <b>🚀 Nguyễn Văn An</b> — Sinh viên giỏi (Advanced)<br>
+        <span class="mono" style="font-size:.72rem;color:var(--bl)">11201234 · Điểm TB: 92/100</span>
+      </div>
+      <div class="demo-acc" onclick="loginAs('student-risk')">
+        <b>⚠️ Lê Minh Tuấn</b> — Sinh viên nguy cơ (At-Risk)<br>
+        <span class="mono" style="font-size:.72rem;color:var(--yw)">11204567 · Điểm TB: 48/100</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     TEACHER DASHBOARD
+══════════════════════════════════════════════════════════ -->
+<div id="page-teacher" class="page">
+  <nav class="nav">
+    <div class="nav-brand">
+      <div class="nav-logo">🔬</div>
+      <span>NEU-CodeLens <span style="color:var(--t3);font-weight:400">Skills Lab</span></span>
+    </div>
+    <div class="nav-right">
+      <span class="badge bdr" style="font-size:.68rem">🧠 LLM+UA Active</span>
+      <div style="display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--t2)">
+        <div class="nav-avatar" style="background:rgba(192,57,43,.2);color:var(--rl)">MĐ</div>
+        <div><div style="font-weight:600;color:var(--t1);font-size:.8rem">TS. Nguyễn Minh Đức</div><div style="font-size:.68rem">Giảng viên · LTCB-2026A</div></div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="goHome()">Đăng xuất</button>
+    </div>
+  </nav>
+  <div class="main">
+    <!-- Header -->
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:22px">
+      <div>
+        <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:7px">
+          <span class="badge bdr">🏫 LTCB-2026A</span>
+          <span class="badge bdb">C++ Căn bản · 6 Buổi</span>
+          <span class="badge bdp">HK1 · 2026</span>
+        </div>
+        <h1 style="font-size:1.6rem;font-weight:800;letter-spacing:-.02em;margin-bottom:3px">Dashboard Giảng viên</h1>
+        <p style="color:var(--t2);font-size:.83rem">Phân tích năng lực lập trình sinh viên qua LLM + Understand-Anything Pipeline</p>
+      </div>
+      <button class="btn btn-primary" onclick="openCreateAsgn()">+ Tạo Bài tập mới</button>
+    </div>
+    <!-- Stats -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px" class="g4" id="t-stats"></div>
+    <!-- Tabs -->
+    <div class="tabs" style="margin-bottom:20px" id="t-tabs">
+      <button class="tab active" onclick="switchTTab('t-overview',this)">📊 Tổng quan</button>
+      <button class="tab" onclick="switchTTab('t-assignments',this)">📋 Bài tập</button>
+      <button class="tab" onclick="switchTTab('t-students',this)">👥 Sinh viên</button>
+      <button class="tab" onclick="switchTTab('t-ews',this)">🚨 EWS &amp; Cảnh báo</button>
+    </div>
+    <!-- Tab: Overview -->
+    <div id="tab-t-overview" class="tab-content active">
+      <div style="display:grid;grid-template-columns:1fr 360px;gap:20px;align-items:start" class="tl-layout">
+        <div style="display:flex;flex-direction:column;gap:18px">
+          <div class="card" id="heatmap-card">
+            <div style="font-weight:700;font-size:.95rem;margin-bottom:4px">🌡️ Concept Heatmap — Ma trận Năng lực Toàn lớp</div>
+            <div style="font-size:.74rem;color:var(--t2);margin-bottom:16px">Hàng = Sinh viên · Cột = Khái niệm · Màu: 🔴 Yếu → 🟡 TB → 🟢 Tốt</div>
+            <div id="heatmap"></div>
+          </div>
+          <div class="card">
+            <div style="font-weight:700;font-size:.95rem;margin-bottom:3px">📈 Tiến trình Điểm số — 6 Buổi học</div>
+            <div style="font-size:.74rem;color:var(--t2);margin-bottom:14px">Điểm từng sinh viên qua các buổi (đường nét đứt = sinh viên at-risk)</div>
+            <svg id="progress-svg" style="width:100%;overflow:visible" height="200"></svg>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="card card-sm">
+            <div style="font-weight:700;font-size:.88rem;margin-bottom:12px">⚡ Cảnh báo Nhanh</div>
+            <div id="quick-ews"></div>
+          </div>
+          <div class="card card-sm">
+            <div style="font-weight:700;font-size:.88rem;margin-bottom:12px">📐 Năng lực TB Toàn lớp</div>
+            <div id="class-bars"></div>
+          </div>
+          <div class="card card-sm">
+            <div style="font-weight:700;font-size:.88rem;margin-bottom:12px">🔬 UA Pipeline Status</div>
+            <div id="ua-status"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Tab: Assignments -->
+    <div id="tab-t-assignments" class="tab-content">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px" class="tl-layout">
+        <div>
+          <div style="font-weight:700;font-size:.95rem;margin-bottom:14px">📋 Danh sách 6 Bài tập</div>
+          <div id="asgn-list"></div>
+        </div>
+        <div class="card">
+          <div style="font-weight:700;font-size:.95rem;margin-bottom:4px">📊 Thống kê Nộp bài</div>
+          <div style="font-size:.74rem;color:var(--t2);margin-bottom:14px">Tỉ lệ nộp và điểm trung bình theo buổi</div>
+          <div id="sub-stats"></div>
+          <div style="margin-top:18px">
+            <div style="font-weight:700;font-size:.88rem;margin-bottom:12px">🎯 Phân phối Rubric 3 Tầng (TB lớp)</div>
+            <div id="rubric-mini"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Tab: Students -->
+    <div id="tab-t-students" class="tab-content">
+      <div style="display:grid;grid-template-columns:340px 1fr;gap:20px;align-items:start" class="tl-layout">
+        <div style="position:sticky;top:70px">
+          <div class="card card-sm" style="margin-bottom:10px">
+            <input class="input" id="sv-search" placeholder="🔍 Tìm tên, MSSV..." oninput="renderSvList()">
+            <div style="display:flex;gap:4px;margin-top:9px;flex-wrap:wrap" id="prof-filters"></div>
+          </div>
+          <div class="card card-sm" style="padding:7px" id="sv-list"></div>
+        </div>
+        <div id="sv-detail">
+          <div class="card" style="text-align:center;padding:56px;color:var(--t3)">
+            <div style="font-size:3rem;margin-bottom:12px">👆</div>
+            <div style="font-weight:600">Chọn một sinh viên để xem hồ sơ năng lực chi tiết</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Tab: EWS -->
+    <div id="tab-t-ews" class="tab-content">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px" class="tl-layout">
+        <div class="card">
+          <div style="font-weight:700;font-size:.95rem;margin-bottom:4px">🚨 At-Risk Students</div>
+          <div style="font-size:.74rem;color:var(--t2);margin-bottom:14px">Phát hiện dựa trên điểm số, lịch sử nộp và LLM analysis</div>
+          <div id="ews-risk"></div>
+        </div>
+        <div class="card">
+          <div style="font-weight:700;font-size:.95rem;margin-bottom:4px">🤖 AI-Generated Code Alerts</div>
+          <div style="font-size:.74rem;color:var(--t2);margin-bottom:14px">Phát hiện phong cách code bất thường qua nhiều buổi</div>
+          <div id="ews-ai"></div>
+        </div>
+        <div class="card" style="grid-column:1/-1">
+          <div style="font-weight:700;font-size:.95rem;margin-bottom:16px">📊 Rubric 3 Tầng — Phân tích Chi tiết</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px" id="rubric-detail"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     STUDENT DASHBOARD
+══════════════════════════════════════════════════════════ -->
+<div id="page-student" class="page">
+  <nav class="nav">
+    <div class="nav-brand">
+      <div class="nav-logo">🔬</div>
+      <span>NEU-CodeLens <span style="color:var(--t3);font-weight:400">Skills Lab</span></span>
+    </div>
+    <div class="nav-right">
+      <span id="sv-nav-badge"></span>
+      <div style="display:flex;align-items:center;gap:8px" id="sv-nav-info">
+        <div class="nav-avatar" id="sv-nav-av" style="background:rgba(96,165,250,.2);color:#93c5fd">VA</div>
+        <div id="sv-nav-text"><div style="font-weight:600;font-size:.8rem">Nguyễn Văn An</div><div style="font-size:.68rem;color:var(--t2)">MSSV: 11201234</div></div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="goHome()">Đăng xuất</button>
+    </div>
+  </nav>
+  <div class="main">
+    <div id="sv-page-hdr" style="margin-bottom:22px"></div>
+    <div class="tabs" style="margin-bottom:20px">
+      <button class="tab active" onclick="switchSTab('s-asgn',this)">📋 Bài tập của tôi</button>
+      <button class="tab" onclick="switchSTab('s-submit',this)">📤 Nộp bài</button>
+      <button class="tab" onclick="switchSTab('s-profile',this)">🎯 Hồ sơ Năng lực</button>
+    </div>
+    <!-- Tab: Assignments -->
+    <div id="tab-s-asgn" class="tab-content active">
+      <div style="display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start" class="tl-layout">
+        <div>
+          <div style="font-weight:700;font-size:.95rem;margin-bottom:14px">📋 Bài tập — Lớp LTCB-2026A</div>
+          <div id="sv-asgn-list"></div>
+        </div>
+        <div class="card card-sm" id="sv-summary"></div>
+      </div>
+    </div>
+    <!-- Tab: Submit -->
+    <div id="tab-s-submit" class="tab-content">
+      <div style="display:grid;grid-template-columns:1fr 370px;gap:20px;align-items:start" class="tl-layout">
+        <div style="display:flex;flex-direction:column;gap:18px">
+          <div class="card" id="submit-asgn"></div>
+          <div class="card" id="submit-editor"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="card card-sm" id="pipe-panel">
+            <div style="font-weight:700;font-size:.88rem;margin-bottom:12px">⚙️ LLM + UA Analysis Pipeline</div>
+            <div id="pipe-steps"></div>
+          </div>
+          <div id="fb-result"></div>
+        </div>
+      </div>
+    </div>
+    <!-- Tab: Profile -->
+    <div id="tab-s-profile" class="tab-content">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px" class="tl-layout">
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="card" id="sv-radar-card"></div>
+          <div class="card" id="sv-strength-card"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="card" id="sv-tl-card"></div>
+          <div class="card" id="sv-misc-card"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Student Detail (Teacher view) -->
+<div class="ov" id="sv-modal" onclick="if(event.target.id==='sv-modal')closeSvModal()">
+  <div class="mpanel">
+    <div class="mhdr"><div id="modal-hdr"></div><button class="close-btn" onclick="closeSvModal()">✕</button></div>
+    <div class="mbody" id="modal-body"></div>
+  </div>
+</div>
+
+<!-- Modal: Create Assignment -->
+<div class="ov2" id="asgn-modal">
+  <div class="mp2">
+    <div style="padding:18px 22px;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;align-items:center">
+      <b>+ Tạo Bài tập Mới</b>
+      <button class="close-btn" onclick="closeCreateAsgn()">✕</button>
+    </div>
+    <div style="padding:20px 22px">
+      <div style="margin-bottom:12px"><div class="label">Tên buổi học</div><input class="input" id="a-title" placeholder="VD: Buổi 7: Con trỏ và Địa chỉ"></div>
+      <div style="margin-bottom:12px"><div class="label">Đề bài</div><textarea class="input" id="a-desc" rows="4" placeholder="Mô tả yêu cầu bài tập..."></textarea></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div><div class="label">Ngôn ngữ</div><select class="input" id="a-lang"><option>C++</option><option>Python</option><option>Java</option></select></div>
+        <div><div class="label">Deadline</div><input class="input" type="datetime-local" id="a-deadline"></div>
+      </div>
+      <div style="margin-bottom:12px">
+        <div class="label">Khái niệm cần đánh giá</div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px" id="concept-cbs"></div>
+      </div>
+      <div style="margin-bottom:18px">
+        <div class="label">Trọng số Rubric 3 Tầng (%)</div>
+        <div style="display:flex;gap:10px;margin-top:7px">
+          <div style="flex:1"><div style="font-size:.72rem;color:var(--t2);margin-bottom:3px">T1 Correctness</div><input class="input" id="w1" value="40" type="number"></div>
+          <div style="flex:1"><div style="font-size:.72rem;color:var(--t2);margin-bottom:3px">T2 Code Quality</div><input class="input" id="w2" value="35" type="number"></div>
+          <div style="flex:1"><div style="font-size:.72rem;color:var(--t2);margin-bottom:3px">T3 CT</div><input class="input" id="w3" value="25" type="number"></div>
+        </div>
+      </div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="createAsgn()">✓ Tạo & thông báo sinh viên</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast">✓ Thành công!</div>
+
+<script>
+// ══════════════════════════════════════════════════
+// DATA
+// ══════════════════════════════════════════════════
+const CONS=['variables','conditionals','loops','arrays','functions']
+const CON_LBL={variables:'Biến & I/O',conditionals:'Rẽ nhánh',loops:'Vòng lặp',arrays:'Mảng',functions:'Hàm'}
+const CON_EM={variables:'📦',conditionals:'🔀',loops:'🔄',arrays:'📊',functions:'⚙️'}
+
+const STUDENTS=[
+{id:'s1',name:'Nguyễn Văn An',mssv:'11201234',ini:'VA',
+ type:'advanced',score:92,trend:'stable',risk:0.05,
+ cm:{variables:95,conditionals:90,loops:92,arrays:90,functions:94},
+ strengths:['Đặt tên biến chuẩn convention','Logic rẽ nhánh tối ưu','Hàm đệ quy cấu trúc chuẩn','Hiểu vòng lặp lồng nhau sâu'],
+ improve:['Bổ sung comment giải thích','Thử thách bài toán phức tạp hơn'],
+ misc:[],
+ sessions:[
+  {n:'Buổi 1: Biến & Nhập xuất',st:'passed',sc:95,t1:38,t2:33,t3:24,at:1,mis:[],
+   fb:'Bài làm xuất sắc. Code sạch, đặt tên biến rõ ràng. Hiểu đúng cơ chế nhập xuất cơ bản. Tư duy lập trình cao — biết phân rã bài toán.',
+   ai:{f:false,c:.03},
+   code:'#include <iostream>\nusing namespace std;\n\nint main() {\n    double r;\n    cout << "Nhap ban kinh: ";\n    cin >> r;\n    double s = 3.14159 * r * r;\n    cout << "Dien tich: " << s << endl;\n    return 0;\n}',
+   date:'2026-06-01T08:30:00Z'},
+  {n:'Buổi 2: Câu lệnh Rẽ nhánh',st:'passed',sc:90,t1:36,t2:31,t3:23,at:2,mis:[],
+   fb:'Logic rẽ nhánh chính xác. Biểu thức điều kiện phức hợp (&&, ||) sử dụng hợp lý. Lần 2 tự fix được lỗi thiếu ngoặc — debug tốt.',
+   ai:{f:false,c:.05},
+   code:'#include <iostream>\nusing namespace std;\n\nint main() {\n    int year; cin >> year;\n    if ((year%4==0 && year%100!=0)||(year%400==0))\n        cout << year << " la nam nhuan";\n    else\n        cout << year << " khong la nam nhuan";\n    return 0;\n}',
+   date:'2026-06-03T09:15:00Z'},
+  {n:'Buổi 3: Vòng lặp',st:'passed',sc:92,t1:37,t2:31,t3:24,at:1,mis:[],
+   fb:'Kiểm soát tốt vòng lặp lồng nhau. Biến đếm i, j chuẩn xác. Hiểu đúng nested loops.',
+   ai:{f:false,c:.04},
+   code:'#include <iostream>\nusing namespace std;\n\nint main() {\n    int n; cin >> n;\n    for (int i=1;i<=n;i++) {\n        for (int j=1;j<=i;j++) cout << "* ";\n        cout << "\\n";\n    }\n    return 0;\n}',
+   date:'2026-06-05T08:45:00Z'},
+  {n:'Buổi 4: Mảng/Danh sách',st:'passed',sc:90,t1:36,t2:31,t3:23,at:1,mis:[],
+   fb:'Duyệt mảng chính xác. Khởi tạo maxVal = a[0] là cách tốt nhất. Code sạch và đúng hoàn toàn.',
+   ai:{f:false,c:.04},
+   code:'#include <iostream>\nusing namespace std;\n\nint main() {\n    int n; cin >> n;\n    int a[100];\n    for (int i=0;i<n;i++) cin>>a[i];\n    int mx=a[0],mn=a[0];\n    for (int i=1;i<n;i++) {\n        if(a[i]>mx) mx=a[i];\n        if(a[i]<mn) mn=a[i];\n    }\n    cout<<"Max:"<<mx<<",Min:"<<mn;\n    return 0;\n}',
+   date:'2026-06-08T10:00:00Z'},
+  {n:'Buổi 5: Hàm',st:'passed',sc:94,t1:38,t2:32,t3:24,at:2,mis:[],
+   fb:'Hàm đệ quy chuẩn, base case chính xác. Code mô-đun hóa tốt. Hiểu rõ stack call trong đệ quy.',
+   ai:{f:false,c:.05},
+   code:'#include <iostream>\nusing namespace std;\n\nlong long giaiThua(int n) {\n    if (n==0||n==1) return 1;\n    return n * giaiThua(n-1);\n}\n\nint main() {\n    int n; cin >> n;\n    cout << giaiThua(n);\n    return 0;\n}',
+   date:'2026-06-10T14:20:00Z'},
+  {n:'Buổi 6: Tổng hợp',st:'passed',sc:96,t1:39,t2:33,t3:24,at:1,mis:[],
+   fb:'Bài tổng hợp xuất sắc! Kết hợp hàm+mảng+vòng lặp mượt mà. Tư duy phân rã bài toán rất rõ ràng.',
+   ai:{f:false,c:.03},
+   code:'#include <iostream>\nusing namespace std;\n\nvoid sort(int a[],int n){\n    for(int i=0;i<n-1;i++)\n        for(int j=i+1;j<n;j++)\n            if(a[i]>a[j]){int t=a[i];a[i]=a[j];a[j]=t;}\n}\n\nint main(){\n    int n,a[100];\n    cin>>n;\n    for(int i=0;i<n;i++) cin>>a[i];\n    sort(a,n);\n    for(int i=0;i<n;i++) cout<<a[i]<<" ";\n}',
+   date:'2026-06-12T09:00:00Z'}
+ ]},
+{id:'s2',name:'Lê Minh Tuấn',mssv:'11204567',ini:'MT',
+ type:'at-risk',score:48,trend:'declining',risk:0.84,
+ cm:{variables:75,conditionals:60,loops:35,arrays:10,functions:0},
+ strengths:['Nỗ lực thử nhiều lần','Hiểu cơ bản về biến'],
+ improve:['Ôn lại vòng lặp NGAY — lỗi infinite loop nghiêm trọng','Chưa hiểu chỉ mục mảng từ 0','Chưa nộp bài hàm — cần hỗ trợ khẩn'],
+ misc:['Infinite Loop — quên cập nhật biến điều kiện trong while','Off-by-one — i<=n thay vì i<n khi duyệt mảng','Dùng nhiều if độc lập thay vì if-else chain'],
+ sessions:[
+  {n:'Buổi 1: Biến & Nhập xuất',st:'passed',sc:75,t1:28,t2:25,t3:22,at:2,mis:[],
+   fb:'Đã hoàn thành. Code đúng nhưng thiếu prompt nhập liệu cho người dùng. Cần cải thiện UX.',
+   ai:{f:false,c:.05},
+   code:'#include <iostream>\nusing namespace std;\nint main() {\n    int a,b;\n    cin>>a>>b;\n    cout<<a*b;\n    return 0;\n}',
+   date:'2026-06-01T09:12:00Z'},
+  {n:'Buổi 2: Câu lệnh Rẽ nhánh',st:'passed',sc:60,t1:22,t2:20,t3:18,at:5,mis:['Dùng nhiều if độc lập — in nhiều kết quả cùng lúc'],
+   fb:'PHÁT HIỆN LỖI TƯ DUY: Sinh viên dùng nhiều if độc lập thay vì if-else chain. Khi điểm=9, in cả GIOI, KHA, TB — sai về logic. Phải dùng else if để bỏ qua điều kiện sau khi đúng.',
+   ai:{f:false,c:.06},
+   code:'#include <iostream>\nusing namespace std;\nint main() {\n    double d; cin>>d;\n    if(d>=8) cout<<"GIOI";\n    if(d>=6.5) cout<<"KHA";  // Thieu else!\n    if(d>=5) cout<<"TB";\n    else cout<<"YEU";\n    return 0;\n}',
+   date:'2026-06-03T10:45:00Z'},
+  {n:'Buổi 3: Vòng lặp',st:'failed',sc:35,t1:12,t2:12,t3:11,at:18,mis:['Infinite Loop — quên tăng i','Không hiểu điều kiện dừng vòng while'],
+   fb:'LỖI NGHIÊM TRỌNG: Quên cập nhật biến i++ trong vòng while → i luôn=1 → lặp vô hạn. Số lần thử=18 cho thấy sinh viên đang bế tắc. Cần giảng viên hỗ trợ trực tiếp.',
+   ai:{f:false,c:.04},
+   code:'#include <iostream>\nusing namespace std;\nint main() {\n    int n; cin>>n;\n    int i=1, tong=0;\n    while(i<=n) {\n        tong+=i;\n        // QUEN i++ — LOOP VO HAN!\n    }\n    cout<<tong;\n    return 0;\n}',
+   date:'2026-06-06T15:30:00Z'},
+  {n:'Buổi 4: Mảng/Danh sách',st:'pending',sc:10,t1:5,t2:3,t3:2,at:6,mis:['Khai báo a[10] nhưng nhập n>10 → tràn bộ nhớ','Off-by-one: i<=n thay vì i<n'],
+   fb:'Sinh viên bị kẹt nghiêm trọng. Khai báo a[10] nhưng n có thể >10 → tràn bộ nhớ. Vòng lặp i<=n sai — chỉ mục C++ từ 0 đến n-1.',
+   ai:{f:false,c:.04},
+   code:'#include <iostream>\nusing namespace std;\nint main() {\n    int n; cin>>n;\n    int a[10];  // SAI!\n    for(int i=0;i<=n;i++) cin>>a[i];  // Off-by-one!\n}',
+   date:'2026-06-09T09:30:00Z'},
+  {n:'Buổi 5: Hàm',st:'pending',sc:0,t1:0,t2:0,t3:0,at:0,mis:['Chưa nộp bài'],
+   fb:'Chưa nộp bài. Dấu hiệu buông xuôi. CẦN GIẢNG VIÊN TIẾP CẬN NGAY.',
+   ai:{f:false,c:0},code:'',date:''},
+  {n:'Buổi 6: Tổng hợp',st:'pending',sc:0,t1:0,t2:0,t3:0,at:0,mis:['Chưa nộp bài'],
+   fb:'Chưa tham gia buổi tổng hợp.',
+   ai:{f:false,c:0},code:'',date:''}
+ ]},
+{id:'s3',name:'Trần Thị Bình',mssv:'11202345',ini:'TB',
+ type:'on-track',score:78,trend:'improving',risk:0.22,
+ cm:{variables:90,conditionals:85,loops:75,arrays:70,functions:72},
+ strengths:['Logic rẽ nhánh cơ bản tốt','Tiến bộ đều đặn','Đặt tên biến gọn gàng'],
+ improve:['Lỗi Off-by-one vẫn xuất hiện khi duyệt mảng','Thực hành thêm hàm phức tạp'],
+ misc:['Off-by-one: i<=n thay vì i<n khi duyệt mảng (Buổi 4)'],
+ sessions:[
+  {n:'Buổi 1: Biến & Nhập xuất',st:'passed',sc:90,t1:36,t2:31,t3:23,at:1,mis:[],
+   fb:'Tốt. Code đúng, có prompt nhập liệu — tốt hơn nhiều bạn.',
+   ai:{f:false,c:.04},
+   code:'#include <iostream>\nusing namespace std;\nint main(){\n    double d,r;\n    cout<<"Dai: "; cin>>d;\n    cout<<"Rong: "; cin>>r;\n    cout<<"S = "<<d*r;\n    return 0;\n}',
+   date:'2026-06-01T08:45:00Z'},
+  {n:'Buổi 2: Câu lệnh Rẽ nhánh',st:'passed',sc:85,t1:34,t2:29,t3:22,at:1,mis:[],
+   fb:'Bài làm đạt yêu cầu. if-else đúng và rõ ràng.',
+   ai:{f:false,c:.04},
+   code:'#include <iostream>\nusing namespace std;\nint main(){\n    int n; cin>>n;\n    if(n%2==0) cout<<n<<" chan";\n    else cout<<n<<" le";\n    return 0;\n}',
+   date:'2026-06-03T09:20:00Z'},
+  {n:'Buổi 3: Vòng lặp',st:'passed',sc:75,t1:30,t2:26,t3:19,at:3,mis:[],
+   fb:'Đúng. Hiểu vòng lặp đơn. Khuyến khích thực hành lồng nhau.',
+   ai:{f:false,c:.04},
+   code:'#include <iostream>\nusing namespace std;\nint main(){\n    for(int i=1;i<=10;i++)\n        cout<<"2 x "<<i<<" = "<<2*i<<endl;\n    return 0;\n}',
+   date:'2026-06-05T09:10:00Z'},
+  {n:'Buổi 4: Mảng/Danh sách',st:'passed',sc:70,t1:28,t2:23,t3:19,at:4,mis:['Off-by-one: i<=n thay vì i<n'],
+   fb:'Lần 4 đã fix off-by-one. Vòng lặp tính tổng ban đầu chạy i<=n thay vì i<n → cộng thêm giá trị rác. Sinh viên học được từ lỗi.',
+   ai:{f:false,c:.05},
+   code:'#include <iostream>\nusing namespace std;\nint main(){\n    int n; cin>>n;\n    int a[100];\n    for(int i=0;i<n;i++) cin>>a[i];\n    int s=0;\n    for(int i=0;i<n;i++) s+=a[i];  // Da sua\n    cout<<s;\n    return 0;\n}',
+   date:'2026-06-08T11:15:00Z'},
+  {n:'Buổi 5: Hàm',st:'passed',sc:72,t1:29,t2:24,t3:19,at:2,mis:[],
+   fb:'Hoàn thành. Hàm đúng với số mũ dương. Tiến bộ so với buổi trước.',
+   ai:{f:false,c:.04},
+   code:'#include <iostream>\nusing namespace std;\n\ndouble tinhMu(double x,int n){\n    double r=1;\n    for(int i=0;i<n;i++) r*=x;\n    return r;\n}\n\nint main(){\n    cout<<tinhMu(2,5);\n    return 0;\n}',
+   date:'2026-06-10T15:10:00Z'},
+  {n:'Buổi 6: Tổng hợp',st:'passed',sc:80,t1:32,t2:27,t3:21,at:2,mis:[],
+   fb:'Bài tổng hợp tốt. Kết hợp hàm và mảng. Xu hướng tiến bộ rõ rệt.',
+   ai:{f:false,c:.04},
+   code:'#include <iostream>\nusing namespace std;\n\nvoid nhap(int a[],int n){for(int i=0;i<n;i++) cin>>a[i];}\nint tong(int a[],int n){int s=0;for(int i=0;i<n;i++) s+=a[i];return s;}\n\nint main(){\n    int n,a[100]; cin>>n;\n    nhap(a,n); cout<<tong(a,n);\n}',
+   date:'2026-06-12T10:00:00Z'}
+ ]},
+{id:'s4',name:'Phạm Hồng Sơn',mssv:'11203456',ini:'HS',
+ type:'ai-warning',score:82,trend:'stable',risk:0.45,
+ cm:{variables:90,conditionals:85,loops:80,arrays:85,functions:70},
+ strengths:['Điểm số cao','Code thường hoàn chỉnh'],
+ improve:['Cần chứng minh hiểu code trong phỏng vấn trực tiếp'],
+ misc:['AI-generated: Dùng vector+lambda+auto buổi 3 (chưa học)','AI-generated: Binary search với l+(r-l)/2 buổi 4'],
+ sessions:[
+  {n:'Buổi 1: Biến & Nhập xuất',st:'passed',sc:90,t1:36,t2:31,t3:23,at:1,mis:[],
+   fb:'Code chạy tốt, viết đơn giản. Phong cách phù hợp người mới học.',
+   ai:{f:false,c:.08},
+   code:'#include <iostream>\nusing namespace std;\nint main(){\n    int x; cin>>x;\n    cout<<x*4;\n    return 0;\n}',
+   date:'2026-06-01T08:50:00Z'},
+  {n:'Buổi 2: Câu lệnh Rẽ nhánh',st:'passed',sc:85,t1:34,t2:29,t3:22,at:2,mis:[],
+   fb:'Logic tìm max đúng. Phong cách nhất quán với buổi 1.',
+   ai:{f:false,c:.07},
+   code:'#include <iostream>\nusing namespace std;\nint main(){\n    int a,b,c; cin>>a>>b>>c;\n    int mx=a;\n    if(b>mx) mx=b;\n    if(c>mx) mx=c;\n    cout<<mx;\n    return 0;\n}',
+   date:'2026-06-03T09:32:00Z'},
+  {n:'Buổi 3: Vòng lặp',st:'warning',sc:80,t1:32,t2:27,t3:21,at:1,mis:['Dùng vector+lambda+auto C++11 chưa học','Phong cách code thay đổi đột ngột'],
+   fb:'⚠️ CẢNH BÁO AI: Code dùng vector, algorithm, Lambda, auto — vượt xa trình độ buổi 3. Phong cách thay đổi hoàn toàn so với buổi 1-2. Nghi vấn ChatGPT viết hộ.',
+   ai:{f:true,c:.88,r:'vector+lambda+auto chưa học; phong cách thay đổi đột ngột'},
+   code:'#include <iostream>\n#include <vector>\n#include <algorithm>\n\nvoid printSorted(std::vector<int>& vec) {\n    std::sort(vec.begin(), vec.end(),\n        [](int a,int b){return a<b;});\n    for(const auto& x : vec) std::cout<<x<<" ";\n}\n\nint main(){\n    std::vector<int> d={5,2,8,1,9};\n    printSorted(d);\n}',
+   date:'2026-06-06T19:30:00Z'},
+  {n:'Buổi 4: Mảng/Danh sách',st:'warning',sc:75,t1:30,t2:25,t3:20,at:1,mis:['Binary search với l+(r-l)/2 optimization — kỹ thuật chuyên nghiệp'],
+   fb:'⚠️ CẢNH BÁO AI: Binary search với l+(r-l)/2 là kỹ thuật tránh overflow chuyên nghiệp. Comment học thuật rập khuôn ChatGPT. Độ nghi vấn rất cao.',
+   ai:{f:true,c:.92,r:'Binary search optimization; comment học thuật bất thường'},
+   code:'// Binary Search - Time O(log n), Space O(1)\nint binarySearch(int arr[],int l,int r,int x){\n    while(l<=r){\n        int m=l+(r-l)/2;  // Avoid overflow\n        if(arr[m]==x) return m;\n        if(arr[m]<x) l=m+1;\n        else r=m-1;\n    }\n    return -1;\n}',
+   date:'2026-06-09T22:15:00Z'},
+  {n:'Buổi 5: Hàm',st:'warning',sc:80,t1:32,t2:27,t3:21,at:1,mis:['isPrime O(sqrt(N)) với bước 6 — quá tối ưu'],
+   fb:'⚠️ CẢNH BÁO: Thuật toán isPrime nhảy bước 6 (i+=6, kiểm tra i và i+2) là tối ưu chuyên nghiệp. Người mới 5 buổi không thể tự viết.',
+   ai:{f:true,c:.90,r:'Sieve-optimized isPrime — impossible for 5-session beginner'},
+   code:'bool isPrime(int n){\n    if(n<=1) return false;\n    if(n<=3) return true;\n    if(n%2==0||n%3==0) return false;\n    for(int i=5;i*i<=n;i+=6)\n        if(n%i==0||n%(i+2)==0) return false;\n    return true;\n}',
+   date:'2026-06-11T08:00:00Z'},
+  {n:'Buổi 6: Tổng hợp',st:'passed',sc:85,t1:34,t2:29,t3:22,at:1,mis:[],
+   fb:'Buổi cuối phong cách đơn giản hơn. Tuy nhiên, khuyến nghị giảng viên phỏng vấn trực tiếp về code buổi 3-5.',
+   ai:{f:false,c:.35},
+   code:'#include <iostream>\nusing namespace std;\n\nvoid nhap(int a[],int n){for(int i=0;i<n;i++) cin>>a[i];}\nvoid in(int a[],int n){for(int i=0;i<n;i++) cout<<a[i]<<" ";}\n\nint main(){\n    int n,a[100]; cin>>n;\n    nhap(a,n); in(a,n);\n}',
+   date:'2026-06-13T09:30:00Z'}
+ ]}
+]
+
+const ASGNS=[
+  {id:'a1',title:'Buổi 1: Biến & Nhập xuất',desc:'Viết chương trình tính diện tích hình tròn. Nhập bán kính r, xuất S = π×r².',lang:'C++',dl:'2026-06-02T23:59',cons:['variables'],status:'closed'},
+  {id:'a2',title:'Buổi 2: Câu lệnh Rẽ nhánh',desc:'Phân loại học lực dựa trên điểm: Giỏi (≥8), Khá (≥6.5), TB (≥5), Yếu (<5). Dùng if-else if chain.',lang:'C++',dl:'2026-06-04T23:59',cons:['conditionals'],status:'closed'},
+  {id:'a3',title:'Buổi 3: Vòng lặp',desc:'In hình tam giác sao vuông có n hàng bằng vòng lặp lồng nhau.',lang:'C++',dl:'2026-06-07T23:59',cons:['loops'],status:'closed'},
+  {id:'a4',title:'Buổi 4: Mảng/Danh sách',desc:'Nhập mảng n phần tử, tìm Max và Min. Không dùng thư viện sort().',lang:'C++',dl:'2026-06-10T23:59',cons:['arrays','loops'],status:'closed'},
+  {id:'a5',title:'Buổi 5: Hàm',desc:'Viết hàm đệ quy tính giai thừa n! (kiểu trả về long long để tránh tràn số).',lang:'C++',dl:'2026-06-12T23:59',cons:['functions'],status:'closed'},
+  {id:'a6',title:'Buổi 6: Tổng hợp & Ôn tập',desc:'Viết hàm tự sắp xếp mảng n số nguyên tăng dần (tự viết thuật toán, không dùng sort()).',lang:'C++',dl:'2026-06-14T23:59',cons:['arrays','functions','loops'],status:'open'}
+]
+
+// ══════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════
+let CUR_ROLE=null, CUR_SV=STUDENTS[0], SEL_SV_ID='s1', PROF_FILTER='all', SEL_ASGN=ASGNS[5], PIPE_RUNNING=false
+
+// ══════════════════════════════════════════════════
+// ROUTING
+// ══════════════════════════════════════════════════
+function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById(id).classList.add('active');window.scrollTo(0,0)}
+function goHome(){showPage('page-landing')}
+function loginAs(role){
+  CUR_ROLE=role
+  if(role==='teacher'){showPage('page-teacher');renderTeacher()}
+  else{
+    CUR_SV=role==='student-risk'?STUDENTS[1]:STUDENTS[0]
+    showPage('page-student');renderStudent()
+  }
+}
+function switchTTab(id,btn){
+  document.querySelectorAll('#t-tabs .tab').forEach(t=>t.classList.remove('active'));btn.classList.add('active')
+  document.querySelectorAll('#page-teacher .tab-content').forEach(t=>t.classList.remove('active'))
+  document.getElementById('tab-'+id).classList.add('active')
+  if(id==='t-students')renderSvList()
+}
+function switchSTab(id,btn){
+  btn.closest('.tabs').querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));btn.classList.add('active')
+  document.querySelectorAll('#page-student .tab-content').forEach(t=>t.classList.remove('active'))
+  document.getElementById('tab-'+id).classList.add('active')
+}
+function openSubmitFor(idx){SEL_ASGN=ASGNS[idx];switchSTab('s-submit',document.querySelectorAll('#page-student .tabs .tab')[1]);renderSubmitArea()}
+
+// ══════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════
+const SC=(v)=>v>=85?'#34d399':v>=70?'#60a5fa':v>=50?'#fbbf24':'#f87171'
+const HB=(v)=>v>=85?'rgba(22,163,74,.3)':v>=70?'rgba(37,99,235,.28)':v>=50?'rgba(202,138,4,.28)':v>=30?'rgba(220,38,38,.22)':'rgba(127,29,29,.38)'
+const HC=(v)=>v>=85?'#16a34a':v>=70?'#2563eb':v>=50?'#ca8a04':v>=30?'#dc2626':'#7f1d1d'
+const PB=(t)=>({advanced:{c:'bdg',i:'🚀',l:'Advanced'},'on-track':{c:'bdb',i:'✅',l:'On Track'},'at-risk':{c:'bdr',i:'⚠️',l:'At Risk'},'ai-warning':{c:'bdy',i:'🤖',l:'AI Warning'}})[t]||{c:'bdn',i:'?',l:t}
+const SB=(s)=>({passed:{c:'bdg',i:'✅',l:'Passed'},failed:{c:'bdr',i:'❌',l:'Failed'},warning:{c:'bdy',i:'⚠️',l:'Warning'},pending:{c:'bdn',i:'⏳',l:'Chưa nộp'}})[s]||{c:'bdn',i:'?',l:s}
+const AV_BG=['rgba(192,57,43,.22)','rgba(96,165,250,.22)','rgba(16,185,129,.22)','rgba(251,191,36,.22)']
+const AV_TX=['#f87171','#93c5fd','#6ee7b7','#fde68a']
+function avBg(id){return AV_BG[STUDENTS.findIndex(s=>s.id===id)%4]}
+function avTx(id){return AV_TX[STUDENTS.findIndex(s=>s.id===id)%4]}
+function fmtDate(d){if(!d)return'Chưa nộp';return new Date(d).toLocaleString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}
+function toast(msg,err=false){const t=document.getElementById('toast');t.textContent=(err?'✗ ':' ✓ ')+msg;t.style.borderColor=err?'#f87171':'#10b981';t.style.color=err?'#f87171':'#10b981';t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3200)}
+function delay(ms){return new Promise(r=>setTimeout(r,ms))}
+
+function hl(code){
+  return code.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/(\/\/.*$)/gm,'<span class="cmt">$1</span>')
+    .replace(/\b(int|double|float|long|void|bool|char|return|if|else|for|while|do|switch|case|break|continue|class|struct|include|using|namespace|std|const|auto|endl|cin|cout|true|false)\b/g,'<span class="kw">$1</span>')
+    .replace(/\b([A-Za-z_]\w*)\s*(?=\()/g,'<span class="fn">$1</span>')
+    .replace(/"([^"]*)"/g,'<span class="str">"$1"</span>')
+    .replace(/\b(\d+\.?\d*)\b/g,'<span class="num">$1</span>')
+    .replace(/#(\w+)/g,'<span class="pp">#$1</span>')
+}
+
+// ══════════════════════════════════════════════════
+// TEACHER RENDER
+// ══════════════════════════════════════════════════
+function renderTeacher(){
+  renderTStats();renderHeatmap();renderProgressChart();renderQuickEWS();renderClassBars();renderUAStatus()
+  renderAsgnList();renderSubStats();renderRubricMini();renderSvListInit();renderEWSTab();renderRubricDetail();renderProfFilters();renderConceptCBs()
+}
+
+function renderTStats(){
+  const N=STUDENTS.length,avg=Math.round(STUDENTS.reduce((s,x)=>s+x.score,0)/N)
+  const atRisk=STUDENTS.filter(s=>s.type==='at-risk').length,aiW=STUDENTS.filter(s=>s.type==='ai-warning').length
+  document.getElementById('t-stats').innerHTML=`
+    <div class="stat-card"><div><div class="stat-lbl">Tổng Sinh viên</div><div class="stat-val">${N}</div></div><div class="stat-icon" style="background:rgba(255,255,255,.05)">👥</div></div>
+    <div class="stat-card"><div><div class="stat-lbl">Điểm TB Lớp</div><div class="stat-val" style="color:#a78bfa">${avg}<span style="font-size:1rem">/100</span></div></div><div class="stat-icon" style="background:rgba(167,139,250,.12)">📊</div></div>
+    <div class="stat-card"><div><div class="stat-lbl">⚠️ Nguy cơ Cao</div><div class="stat-val" style="color:#f87171">${atRisk}</div></div><div class="stat-icon" style="background:rgba(248,113,113,.12)">🚨</div></div>
+    <div class="stat-card"><div><div class="stat-lbl">🤖 Nghi vấn AI</div><div class="stat-val" style="color:#fbbf24">${aiW}</div></div><div class="stat-icon" style="background:rgba(251,191,36,.12)">🛡️</div></div>
+  `
+}
+
+function renderHeatmap(){
+  const el=document.getElementById('heatmap')
+  let h=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:separate;border-spacing:5px">`
+  h+=`<tr><th style="text-align:left;font-size:.68rem;color:var(--t3);padding:3px 7px">SINH VIÊN</th>`
+  CONS.forEach(c=>{h+=`<th style="font-size:.68rem;color:var(--t3);text-align:center;padding:3px;min-width:72px">${CON_EM[c]}<br>${CON_LBL[c]}</th>`})
+  h+=`<th style="font-size:.68rem;color:var(--t3);text-align:center">TBÌNH</th></tr>`
+  STUDENTS.forEach(s=>{
+    const pb=PB(s.type);let tot=0
+    h+=`<tr><td style="padding:5px 7px;white-space:nowrap"><div style="display:flex;align-items:center;gap:7px"><div class="sv-av" style="width:28px;height:28px;background:${avBg(s.id)};color:${avTx(s.id)};font-size:.66rem">${s.ini}</div><div><div style="font-size:.8rem;font-weight:600">${s.name}</div><span class="badge ${pb.c}" style="font-size:.58rem">${pb.i} ${pb.l}</span></div></div></td>`
+    CONS.forEach(c=>{const v=s.cm[c];tot+=v;h+=`<td style="text-align:center"><div class="hm-cell" title="${CON_LBL[c]}: ${v}%" style="width:54px;height:38px;margin:auto;background:${HB(v)};border:1px solid ${HC(v)}30;display:flex;align-items:center;justify-content:center;font-size:.78rem;font-weight:800;color:${HC(v)}">${v}</div></td>`})
+    const avg=Math.round(tot/CONS.length)
+    h+=`<td style="text-align:center;font-size:.88rem;font-weight:800;color:${SC(avg)}">${avg}</td></tr>`
+  })
+  h+=`</table></div>`
+  h+=`<div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;font-size:.68rem;color:var(--t3)">
+    <div><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(127,29,29,.38);margin-right:4px"></span>&lt;30</div>
+    <div><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(220,38,38,.22);margin-right:4px"></span>30-49</div>
+    <div><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(202,138,4,.28);margin-right:4px"></span>50-69</div>
+    <div><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(37,99,235,.28);margin-right:4px"></span>70-84</div>
+    <div><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(22,163,74,.3);margin-right:4px"></span>≥85</div>
+  </div>`
+  el.innerHTML=h
+}
+
+function renderProgressChart(){
+  const svg=document.getElementById('progress-svg')
+  const W=svg.parentElement.clientWidth||680,H=200
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`)
+  const pl=42,pr=16,pt=16,pb=28,cw=W-pl-pr,ch=H-pt-pb
+  const CLR=['#34d399','#f87171','#60a5fa','#fbbf24']
+  let h=''
+  for(let i=0;i<=4;i++){const y=pt+ch*(1-i/4);h+=`<line x1="${pl}" y1="${y}" x2="${W-pr}" y2="${y}" stroke="rgba(255,255,255,.04)" stroke-width="1"/><text x="${pl-5}" y="${y+4}" text-anchor="end" font-size="9" fill="#525c6b">${i*25}</text>`}
+  ;['B1','B2','B3','B4','B5','B6'].forEach((lb,i)=>{const x=pl+cw*(i/5);h+=`<text x="${x}" y="${H-pb+14}" text-anchor="middle" font-size="9" fill="#525c6b">${lb}</text>`})
+  STUDENTS.forEach((sv,si)=>{
+    const pts=sv.sessions.map((sess,i)=>({x:pl+cw*(i/5),y:pt+ch*(1-(sess.sc||0)/100)}))
+    const d=pts.map((p,i)=>(i===0?'M':'L')+p.x+','+p.y).join(' ')
+    h+=`<path d="${d}" fill="none" stroke="${CLR[si]}" stroke-width="1.8" stroke-linejoin="round" opacity=".9" ${si===1?'stroke-dasharray="4 2"':''}/>`
+    pts.forEach((p,i)=>{h+=`<circle cx="${p.x}" cy="${p.y}" r="3.5" fill="${CLR[si]}" stroke="${'#07090c'}" stroke-width="1.5"><title>${sv.name} | B${i+1}: ${sv.sessions[i].sc}đ</title></circle>`})
+  })
+  const lx=pl
+  STUDENTS.forEach((sv,i)=>{h+=`<rect x="${lx+i*120}" y="3" width="7" height="7" rx="2" fill="${CLR[i]}"/><text x="${lx+i*120+11}" y="11" font-size="9" fill="#8e98a8">${sv.name.split(' ').pop()}</text>`})
+  svg.innerHTML=h
+}
+
+function renderQuickEWS(){
+  const el=document.getElementById('quick-ews')
+  let h=''
+  STUDENTS.filter(s=>s.type==='at-risk').forEach(s=>{h+=`<div class="ews ews-d"><div class="ews-icon">🚨</div><div><b style="font-size:.83rem">${s.name}</b><br><span style="font-size:.73rem;color:var(--t2)">Điểm: ${s.score}/100 · Risk: ${Math.round(s.risk*100)}%</span></div></div>`})
+  STUDENTS.filter(s=>s.type==='ai-warning').forEach(s=>{h+=`<div class="ews ews-w"><div class="ews-icon">🤖</div><div><b style="font-size:.83rem">${s.name}</b><br><span style="font-size:.73rem;color:var(--t2)">${s.sessions.filter(x=>x.ai.f).length} buổi có nghi vấn AI</span></div></div>`})
+  el.innerHTML=h||'<div style="text-align:center;color:var(--t3);font-size:.82rem;padding:10px">✅ Không có cảnh báo nghiêm trọng</div>'
+}
+
+function renderClassBars(){
+  const avgs={};CONS.forEach(c=>{avgs[c]=Math.round(STUDENTS.reduce((s,x)=>s+x.cm[c],0)/STUDENTS.length)})
+  document.getElementById('class-bars').innerHTML=CONS.map(c=>`<div class="cbar"><span class="cbar-lbl">${CON_EM[c]} ${CON_LBL[c]}</span><div style="flex:1"><div class="prog-wrap"><div class="prog-bar" style="width:${avgs[c]}%;background:${SC(avgs[c])}"></div></div></div><span class="cbar-pct" style="color:${SC(avgs[c])}">${avgs[c]}</span></div>`).join('')
+}
+
+function renderUAStatus(){
+  const stages=[{i:'🔍',n:'AST Scanner'},{i:'📊',n:'Complexity Analyzer'},{i:'🕸️',n:'Call Graph Builder'},{i:'🧠',n:'Knowledge Graph Gen.'},{i:'🤖',n:'LLM Engine (Gemini)'}]
+  document.getElementById('ua-status').innerHTML=stages.map(s=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--b1)"><div style="width:5px;height:5px;border-radius:50%;background:#10b981;box-shadow:0 0 6px #10b981;flex-shrink:0"></div><span style="font-size:.73rem;color:var(--t2)">${s.i} ${s.n}</span><span style="margin-left:auto;font-size:.64rem;color:#10b981;font-weight:700">READY</span></div>`).join('')
+}
+
+function renderAsgnList(){
+  document.getElementById('asgn-list').innerHTML=ASGNS.map((a,i)=>{
+    const sub=STUDENTS.filter(s=>s.sessions[i].at>0).length
+    return`<div class="card card-sm card-hover" style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:5px">
+            <span class="badge ${a.status==='open'?'bdg':'bdn'}">${a.status==='open'?'🟢 Đang mở':'⚫ Đã đóng'}</span>
+            <span style="font-size:.68rem;color:var(--t3)">DL: ${fmtDate(a.dl)}</span>
+          </div>
+          <div style="font-weight:700;font-size:.87rem;margin-bottom:3px">${a.title}</div>
+          <div style="font-size:.76rem;color:var(--t2);-webkit-line-clamp:2;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden">${a.desc}</div>
+          <div style="display:flex;gap:5px;margin-top:7px;flex-wrap:wrap">${a.cons.map(c=>`<span class="badge bdp">${CON_EM[c]} ${CON_LBL[c]}</span>`).join('')}</div>
+        </div>
+        <div style="text-align:center;flex-shrink:0">
+          <div style="font-size:1.3rem;font-weight:800;color:${SC(75)}">${sub}/${STUDENTS.length}</div>
+          <div style="font-size:.64rem;color:var(--t3)">đã nộp</div>
+        </div>
+      </div>
+    </div>`
+  }).join('')
+}
+
+function renderSubStats(){
+  document.getElementById('sub-stats').innerHTML=ASGNS.map((a,i)=>{
+    const sub=STUDENTS.filter(s=>s.sessions[i].at>0)
+    const avg=sub.length?Math.round(sub.reduce((s,x)=>s+x.sessions[i].sc,0)/sub.length):0
+    const pct=Math.round(sub.length/STUDENTS.length*100)
+    return`<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;font-size:.76rem;margin-bottom:3px"><span style="font-weight:600">B${i+1} — ${a.title.split(':')[1]?.trim()||''}</span><span style="color:${SC(avg)}">${sub.length}/${STUDENTS.length} · ${avg}đ</span></div><div class="prog-wrap"><div class="prog-bar" style="width:${pct}%;background:${SC(avg)}"></div></div></div>`
+  }).join('')
+}
+
+function renderRubricMini(){
+  const T=STUDENTS.length,get=(k)=>Math.round(STUDENTS.reduce((s,sv)=>s+sv.sessions.reduce((a,b)=>a+(b[k]||0),0)/sv.sessions.length,0)/T)
+  const t1=get('t1'),t2=get('t2'),t3=get('t3')
+  document.getElementById('rubric-mini').innerHTML=`
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:center;gap:8px"><span style="font-size:.74rem;color:var(--t2);min-width:140px">T1 Correctness (max 40)</span><div style="flex:1"><div class="prog-wrap"><div class="prog-bar" style="width:${(t1/40)*100}%;background:#60a5fa"></div></div></div><span style="font-size:.78rem;font-weight:700;color:#60a5fa;min-width:36px;text-align:right">${t1}/40</span></div>
+      <div style="display:flex;align-items:center;gap:8px"><span style="font-size:.74rem;color:var(--t2);min-width:140px">T2 Code Quality (max 35)</span><div style="flex:1"><div class="prog-wrap"><div class="prog-bar" style="width:${(t2/35)*100}%;background:#a78bfa"></div></div></div><span style="font-size:.78rem;font-weight:700;color:#a78bfa;min-width:36px;text-align:right">${t2}/35</span></div>
+      <div style="display:flex;align-items:center;gap:8px"><span style="font-size:.74rem;color:var(--t2);min-width:140px">T3 Comp. Thinking (max 25)</span><div style="flex:1"><div class="prog-wrap"><div class="prog-bar" style="width:${(t3/25)*100}%;background:#fb923c"></div></div></div><span style="font-size:.78rem;font-weight:700;color:#fb923c;min-width:36px;text-align:right">${t3}/25</span></div>
+    </div>
+  `
+}
+
+function renderProfFilters(){
+  const fs=[{v:'all',l:'Tất cả'},{v:'advanced',l:'🚀 Giỏi'},{v:'on-track',l:'✅ Đạt'},{v:'at-risk',l:'⚠️ Nguy cơ'},{v:'ai-warning',l:'🤖 AI nghi vấn'}]
+  document.getElementById('prof-filters').innerHTML=fs.map(f=>`<button onclick="setPF('${f.v}',this)" style="padding:3px 9px;font-size:.68rem;font-weight:700;border-radius:99px;border:1px solid var(--b2);background:${PROF_FILTER===f.v?'var(--r)':'var(--bg3)'};color:#fff;cursor:pointer;transition:all .18s">${f.l}</button>`).join('')
+}
+
+function setPF(v){PROF_FILTER=v;renderProfFilters();renderSvList()}
+
+function renderSvListInit(){renderSvList()}
+
+function renderSvList(){
+  const q=(document.getElementById('sv-search')?.value||'').toLowerCase()
+  const filtered=STUDENTS.filter(s=>(!q||s.name.toLowerCase().includes(q)||s.mssv.includes(q))&&(PROF_FILTER==='all'||s.type===PROF_FILTER))
+  const el=document.getElementById('sv-list');if(!el)return
+  el.innerHTML=filtered.map(s=>{const pb=PB(s.type);const sel=s.id===SEL_SV_ID;return`<div class="sv-row ${sel?'sel':''}" onclick="selSv('${s.id}')"><div class="sv-av" style="background:${avBg(s.id)};color:${avTx(s.id)}">${s.ini}</div><div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:600;font-size:.85rem">${s.name}</span><span class="badge ${pb.c}" style="font-size:.6rem">${pb.i} ${pb.l}</span></div><div style="display:flex;gap:8px;margin-top:2px"><span style="font-size:.7rem;color:var(--t3);font-family:var(--mono)">${s.mssv}</span><span style="font-size:.7rem;font-weight:700;color:${SC(s.score)}">${s.score}/100</span></div></div></div>`}).join('')||'<div style="text-align:center;color:var(--t3);padding:22px;font-size:.82rem">Không tìm thấy</div>'
+}
+
+function selSv(id){SEL_SV_ID=id;renderSvList();renderSvDetail(id)}
+
+function renderSvDetail(id){
+  const s=STUDENTS.find(x=>x.id===id);if(!s)return
+  const el=document.getElementById('sv-detail');const pb=PB(s.type)
+  const passed=s.sessions.filter(x=>x.st==='passed').length
+  const aiFlags=s.sessions.filter(x=>x.ai.f).length
+  el.innerHTML=`
+    <div class="card" style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:18px;border-bottom:1px solid var(--b1)">
+        <div style="display:flex;gap:12px;align-items:center">
+          <div class="sv-av" style="width:48px;height:48px;font-size:1rem;background:${avBg(s.id)};color:${avTx(s.id)};flex-shrink:0">${s.ini}</div>
+          <div><div style="font-size:1.15rem;font-weight:800;margin-bottom:3px">${s.name}</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><span style="font-size:.74rem;color:var(--t2)">MSSV: <b class="mono">${s.mssv}</b></span><span class="badge ${pb.c}">${pb.i} ${pb.l}</span>${aiFlags>0?`<span class="badge bdy">🤖 ${aiFlags} AI flags</span>`:''}</div>
+          </div>
+        </div>
+        <div style="text-align:right"><div style="font-size:.64rem;color:var(--t3);font-weight:700;margin-bottom:2px">ĐIỂM TB</div><div style="font-size:2rem;font-weight:900;line-height:1;color:${SC(s.score)}">${s.score}</div><div style="font-size:.64rem;color:var(--t3)">${s.trend==='improving'?'📈 Tốt hơn':s.trend==='declining'?'📉 Giảm':'➡️ Ổn định'}</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:200px 1fr;gap:20px">
+        <div><div style="font-size:.7rem;font-weight:700;color:var(--t3);margin-bottom:10px;text-align:center">BIỂU ĐỒ NĂNG LỰC</div><svg id="rd-${id}" width="190" height="190"></svg></div>
+        <div>
+          <div style="font-size:.7rem;font-weight:700;color:var(--t3);margin-bottom:10px">CHỈ SỐ THÀNH THẠO</div>
+          ${CONS.map(c=>`<div class="cbar"><span class="cbar-lbl">${CON_EM[c]} ${CON_LBL[c]}</span><div style="flex:1"><div class="prog-wrap"><div class="prog-bar" style="width:${s.cm[c]}%;background:${SC(s.cm[c])}"></div></div></div><span class="cbar-pct" style="color:${SC(s.cm[c])}">${s.cm[c]}%</span></div>`).join('')}
+          <div style="display:flex;gap:10px;margin-top:10px">
+            ${[{v:passed,c:'#34d399',l:'Pass'},{v:s.sessions.filter(x=>x.st==='failed').length,c:'#f87171',l:'Fail'},{v:s.sessions.reduce((a,b)=>a+b.at,0),c:'#fbbf24',l:'Lần nộp'}].map(x=>`<div style="flex:1;background:var(--bg3);border-radius:var(--r6);padding:8px;text-align:center"><div style="font-size:1.3rem;font-weight:800;color:${x.c}">${x.v}</div><div style="font-size:.64rem;color:var(--t3)">${x.l}</div></div>`).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-weight:700;font-size:.88rem;margin-bottom:14px">📅 Lịch sử Buổi học — Click để xem code + LLM feedback</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:9px" id="sg-${id}"></div>
+    </div>
+    ${s.misc.length?`<div class="card" style="margin-bottom:16px"><div style="font-weight:700;font-size:.88rem;margin-bottom:10px">🧠 Lỗi Tư duy Tích lũy</div>${s.misc.map(m=>`<div class="misc">${m}</div>`).join('')}</div>`:''}
+    <div class="card" id="sd-${id}" style="display:none"></div>
+  `
+  setTimeout(()=>drawRadar(`rd-${id}`,s.cm,190),50)
+  const grid=document.getElementById(`sg-${id}`)
+  if(grid){
+    grid.innerHTML=s.sessions.map((sess,i)=>{
+      const sb=SB(sess.st)
+      return`<div class="sess-card" id="sc-${id}-${i}" onclick="showSessDetail('${id}',${i})">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:.66rem;font-weight:700;color:var(--t3)">B${i+1}</span>${sess.ai.f?'<span class="badge bdy" style="font-size:.56rem">🤖 AI</span>':''}</div>
+        <div style="font-size:.75rem;font-weight:600;line-height:1.3;margin-bottom:7px">${sess.n.replace(/Buổi \d+: /,'')}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span class="badge ${sb.c}" style="font-size:.58rem">${sb.i} ${sb.l}</span>
+          <span style="font-size:.88rem;font-weight:800;color:${SC(sess.sc)}">${sess.sc||'—'}</span>
+        </div>
+        <div style="font-size:.64rem;color:var(--t3);margin-top:4px">${sess.at} lần nộp</div>
+      </div>`
+    }).join('')
+  }
+}
+
+function showSessDetail(svId,idx){
+  const s=STUDENTS.find(x=>x.id===svId);const sess=s.sessions[idx]
+  s.sessions.forEach((_,i)=>document.getElementById(`sc-${svId}-${i}`)?.classList.remove('act'))
+  document.getElementById(`sc-${svId}-${idx}`)?.classList.add('act')
+  const det=document.getElementById(`sd-${svId}`);det.style.display='block'
+  const sb=SB(sess.st)
+  det.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
+      <div><div style="font-weight:700;font-size:.95rem">${sess.n}</div><div style="font-size:.72rem;color:var(--t2);margin-top:2px">Lần nộp: ${sess.at} · ${fmtDate(sess.date)}</div></div>
+      <div style="display:flex;gap:8px;align-items:center"><span class="badge ${sb.c}">${sb.i} ${sb.l}</span><span style="font-size:1.5rem;font-weight:900;color:${SC(sess.sc)}">${sess.sc||'—'}</span></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:14px">
+      <div class="tier-blk" style="border-color:#60a5fa"><div style="font-size:.62rem;font-weight:700;color:var(--t3);margin-bottom:3px">T1 CORRECTNESS</div><div style="font-size:1.25rem;font-weight:800;color:#60a5fa">${sess.t1}<span style="font-size:.72rem">/40</span></div><div class="prog-wrap" style="margin-top:5px"><div class="prog-bar" style="width:${(sess.t1/40)*100}%;background:#60a5fa"></div></div></div>
+      <div class="tier-blk" style="border-color:#a78bfa"><div style="font-size:.62rem;font-weight:700;color:var(--t3);margin-bottom:3px">T2 CODE QUALITY</div><div style="font-size:1.25rem;font-weight:800;color:#a78bfa">${sess.t2}<span style="font-size:.72rem">/35</span></div><div class="prog-wrap" style="margin-top:5px"><div class="prog-bar" style="width:${(sess.t2/35)*100}%;background:#a78bfa"></div></div></div>
+      <div class="tier-blk" style="border-color:#fb923c"><div style="font-size:.62rem;font-weight:700;color:var(--t3);margin-bottom:3px">T3 COMP.THINK.</div><div style="font-size:1.25rem;font-weight:800;color:#fb923c">${sess.t3}<span style="font-size:.72rem">/25</span></div><div class="prog-wrap" style="margin-top:5px"><div class="prog-bar" style="width:${(sess.t3/25)*100}%;background:#fb923c"></div></div></div>
+    </div>
+    <div class="fb ${sess.st==='passed'?'fb-pass':sess.st==='failed'?'fb-fail':'fb-warn'}" style="margin-bottom:11px">
+      <div style="font-size:.64rem;font-weight:700;color:var(--t3);margin-bottom:5px">🤖 LLM ANALYSIS FEEDBACK</div>
+      <div style="font-size:.83rem;line-height:1.7">${sess.fb}</div>
+    </div>
+    ${sess.ai.f?`<div class="fb fb-ai" style="margin-bottom:11px"><div style="font-size:.64rem;font-weight:700;color:#f97316;margin-bottom:5px">🚨 AI-GENERATED CODE DETECTION — Confidence: ${Math.round(sess.ai.c*100)}%</div><div style="font-size:.8rem;line-height:1.6;color:#fed7aa">${sess.ai.r}</div></div>`:''}
+    ${sess.mis.length?`<div style="margin-bottom:11px">${sess.mis.map(m=>`<div class="misc">${m}</div>`).join('')}</div>`:''}
+    ${sess.code?`<div class="code-block"><div class="code-hdr">💻 CODE NỘP (${ASGNS[idx]?.lang||'C++'})</div><pre class="code-body">${hl(sess.code)}</pre></div>`:`<div style="background:var(--bg3);border-radius:var(--r10);padding:22px;text-align:center;color:var(--t3);font-size:.82rem">Chưa nộp bài</div>`}
+  `
+  det.scrollIntoView({behavior:'smooth',block:'nearest'})
+}
+
+function renderEWSTab(){
+  document.getElementById('ews-risk').innerHTML=STUDENTS.filter(s=>s.type==='at-risk').map(s=>`
+    <div class="ews ews-d" style="flex-direction:column;gap:8px">
+      <div style="display:flex;gap:9px;align-items:center"><div class="sv-av" style="width:34px;height:34px;background:${avBg(s.id)};color:${avTx(s.id)};font-size:.76rem">${s.ini}</div><div><b style="font-size:.88rem">${s.name} (${s.mssv})</b><br><span style="font-size:.72rem;color:var(--t2)">Điểm: ${s.score}/100 · Risk: ${Math.round(s.risk*100)}%</span></div></div>
+      <div>${s.misc.slice(0,2).map(m=>`<div class="misc" style="font-size:.72rem">${m}</div>`).join('')}</div>
+      <div style="display:flex;gap:7px"><button class="btn btn-sm btn-danger" onclick="toast('Đã gửi cảnh báo đến ${s.name}')">📧 Gửi cảnh báo</button><button class="btn btn-sm btn-secondary" onclick="selSv('${s.id}');switchTTab('t-students',document.querySelectorAll('#t-tabs .tab')[2])">👁️ Xem hồ sơ</button></div>
+    </div>
+  `).join('')||'<div style="text-align:center;color:var(--t3);padding:24px;font-size:.82rem">✅ Không có sinh viên nguy cơ cao</div>'
+
+  document.getElementById('ews-ai').innerHTML=STUDENTS.filter(s=>s.type==='ai-warning').map(s=>`
+    <div class="ews ews-w" style="flex-direction:column;gap:8px">
+      <div style="display:flex;gap:9px;align-items:center"><div class="sv-av" style="width:34px;height:34px;background:${avBg(s.id)};color:${avTx(s.id)};font-size:.76rem">${s.ini}</div><div><b style="font-size:.88rem">${s.name} (${s.mssv})</b><br><span style="font-size:.72rem;color:var(--t2)">${s.sessions.filter(x=>x.ai.f).length} buổi bị cảnh báo AI</span></div></div>
+      ${s.sessions.filter(x=>x.ai.f).map(sess=>`<div style="background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.18);border-radius:var(--r6);padding:7px 11px;font-size:.72rem"><b>${sess.n}</b> · Conf: ${Math.round(sess.ai.c*100)}% · ${sess.ai.r}</div>`).join('')}
+      <div style="display:flex;gap:7px"><button class="btn btn-sm btn-secondary" onclick="toast('Đã lên lịch phỏng vấn ${s.name}')">🎤 Phỏng vấn</button><button class="btn btn-sm btn-ghost" onclick="selSv('${s.id}');switchTTab('t-students',document.querySelectorAll('#t-tabs .tab')[2])">👁️ Xem</button></div>
+    </div>
+  `).join('')||'<div style="text-align:center;color:var(--t3);padding:24px;font-size:.82rem">✅ Không có nghi vấn AI</div>'
+}
+
+function renderRubricDetail(){
+  const tiers=[
+    {n:'Tầng 1: Correctness',desc:'Cú pháp · Chức năng · Edge cases',max:40,c:'#60a5fa',items:['Cú pháp đúng (10đ)','Pass test cases cơ bản (20đ)','Xử lý edge cases (10đ)']},
+    {n:'Tầng 2: Code Quality',desc:'Đặt tên · Tài liệu · Cấu trúc · Idiomatic',max:35,c:'#a78bfa',items:['Đặt tên biến/hàm rõ (10đ)','Comment phù hợp (8đ)','Cấu trúc rõ ràng (12đ)','Idiomatic code (5đ)']},
+    {n:'Tầng 3: Comp. Thinking',desc:'Phân rã · Trừu tượng · Tái sử dụng · Debug',max:25,c:'#fb923c',items:['Phân rã bài toán (8đ)','Trừu tượng hóa (7đ)','Tái sử dụng pattern (5đ)','Chiến lược Debug (5đ)']}
+  ]
+  const get=(k)=>Math.round(STUDENTS.reduce((s,sv)=>s+sv.sessions.reduce((a,b)=>a+(b[k]||0),0)/sv.sessions.length,0)/STUDENTS.length)
+  const [t1,t2,t3]=[get('t1'),get('t2'),get('t3')]
+  const avgs=[t1,t2,t3]
+  document.getElementById('rubric-detail').innerHTML=tiers.map((t,i)=>`
+    <div style="background:var(--bg3);border:1px solid var(--b1);border-radius:var(--r14);padding:18px;border-top:3px solid ${t.c}">
+      <div style="font-weight:700;font-size:.88rem;margin-bottom:3px">${t.n}</div>
+      <div style="font-size:.7rem;color:var(--t3);margin-bottom:10px">${t.desc}</div>
+      <div style="display:flex;align-items:baseline;gap:5px;margin-bottom:6px"><span style="font-size:1.6rem;font-weight:900;color:${t.c}">${avgs[i]}</span><span style="font-size:.76rem;color:var(--t3)">/ ${t.max} (TB lớp)</span></div>
+      <div class="prog-wrap" style="margin-bottom:10px"><div class="prog-bar" style="width:${(avgs[i]/t.max)*100}%;background:${t.c}"></div></div>
+      ${t.items.map(it=>`<div style="font-size:.7rem;color:var(--t2);display:flex;gap:5px;margin-bottom:3px"><span style="color:${t.c}">•</span>${it}</div>`).join('')}
+    </div>
+  `).join('')
+}
+
+// ══════════════════════════════════════════════════
+// STUDENT RENDER
+// ══════════════════════════════════════════════════
+function renderStudent(){
+  const s=CUR_SV;const pb=PB(s.type)
+  document.getElementById('sv-nav-av').textContent=s.ini
+  document.getElementById('sv-nav-text').innerHTML=`<div style="font-weight:600;font-size:.8rem">${s.name}</div><div style="font-size:.68rem;color:var(--t2)">MSSV: ${s.mssv}</div>`
+  document.getElementById('sv-nav-badge').innerHTML=`<span class="badge ${pb.c}">${pb.i} ${pb.l} · ${s.score}/100</span>`
+  document.getElementById('sv-page-hdr').innerHTML=`
+    <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:7px"><span class="badge ${pb.c}">${pb.i} ${pb.l}</span><span class="badge bdp">LTCB-2026A · C++ Căn bản</span></div>
+    <h1 style="font-size:1.55rem;font-weight:800;letter-spacing:-.02em;margin-bottom:3px">Xin chào, ${s.name.split(' ').pop()} 👋</h1>
+    <p style="color:var(--t2);font-size:.83rem">Theo dõi tiến trình học lập trình của bạn qua từng buổi</p>
+  `
+  renderSvAsgnList();renderSvSummary();renderSubmitArea();renderSvProfile()
+}
+
+function renderSvAsgnList(){
+  const s=CUR_SV
+  document.getElementById('sv-asgn-list').innerHTML=ASGNS.map((a,i)=>{
+    const sess=s.sessions[i];const sb=SB(sess.st)
+    return`<div class="card card-hover card-sm" style="margin-bottom:10px${a.status==='open'?';border-color:rgba(192,57,43,.18)':''}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:5px">
+            <span class="badge ${a.status==='open'?'bdr':'bdn'}">${a.status==='open'?'🟢 Đang mở':'⚫ Đã đóng'}</span>
+            <span class="badge ${sb.c}">${sb.i} ${sb.l}</span>
+            ${sess.ai.f?'<span class="badge bdy">🤖 AI Warning</span>':''}
+          </div>
+          <div style="font-weight:700;font-size:.88rem;margin-bottom:3px">${a.title}</div>
+          <div style="font-size:.76rem;color:var(--t2)">${a.desc.substring(0,90)}...</div>
+          <div style="font-size:.68rem;color:var(--t3);margin-top:5px">DL: ${fmtDate(a.dl)} · ${sess.at} lần nộp</div>
+        </div>
+        <div style="text-align:center;flex-shrink:0">
+          <div style="font-size:1.4rem;font-weight:900;color:${SC(sess.sc)}">${sess.sc||'—'}</div>
+          <div style="font-size:.62rem;color:var(--t3)">điểm</div>
+          ${a.status==='open'?`<button class="btn btn-primary btn-sm" style="margin-top:7px" onclick="openSubmitFor(${i})">📤 Nộp</button>`:''}
+        </div>
+      </div>
+      ${sess.fb&&sess.at>0?`<div style="margin-top:10px;padding:9px 12px;background:var(--bg3);border-radius:var(--r6);border-left:3px solid ${sess.st==='passed'?'#34d399':sess.st==='failed'?'#f87171':'#fbbf24'}"><div style="font-size:.63rem;font-weight:700;color:var(--t3);margin-bottom:3px">🤖 LLM FEEDBACK</div><div style="font-size:.76rem;color:var(--t2);line-height:1.5">${sess.fb.substring(0,140)}${sess.fb.length>140?'...':''}</div></div>`:''}
+    </div>`
+  }).join('')
+}
+
+function renderSvSummary(){
+  const s=CUR_SV
+  const passed=s.sessions.filter(x=>x.st==='passed').length
+  const tots=s.sessions.reduce((a,b)=>a+b.at,0)
+  const T=CONS.length
+  const avgs=CONS.map(c=>s.cm[c])
+  document.getElementById('sv-summary').innerHTML=`
+    <div style="font-weight:700;font-size:.88rem;margin-bottom:12px">📊 Tóm tắt của tôi</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+      ${[{v:`${passed}/${s.sessions.length}`,c:'#34d399',l:'Buổi Pass'},{v:s.score,c:SC(s.score),l:'Điểm TB'},{v:tots,c:'#60a5fa',l:'Tổng lần nộp'},{v:s.misc.length,c:'#f87171',l:'Misconceptions'}].map(x=>`<div style="background:var(--bg3);border-radius:var(--r6);padding:8px;text-align:center"><div style="font-size:1.25rem;font-weight:800;color:${x.c}">${x.v}</div><div style="font-size:.62rem;color:var(--t3)">${x.l}</div></div>`).join('')}
+    </div>
+    <div style="font-size:.7rem;font-weight:700;color:var(--t3);margin-bottom:8px">RADAR NĂNG LỰC CÁ NHÂN</div>
+    <svg id="sv-mini-radar" width="280" height="200" style="display:block;margin:0 auto"></svg>
+  `
+  setTimeout(()=>drawRadarMini('sv-mini-radar',s.cm),50)
+}
+
+function drawRadarMini(svgId,cm){
+  const svg=document.getElementById(svgId);if(!svg)return
+  const W=280,H=200,cx=W/2,cy=H/2,r=70
+  const pts=CONS.map((c,i)=>({ang:i*(360/5)-90,v:cm[c],lbl:CON_LBL[c]}))
+  const xy=(ang,v)=>{const rad=ang*Math.PI/180;return{x:cx+(v/100)*r*Math.cos(rad),y:cy+(v/100)*r*Math.sin(rad)}}
+  let h=''
+  ;[25,50,75,100].forEach(g=>{const gp=pts.map(p=>xy(p.ang,g));h+=`<polygon points="${gp.map(p=>`${p.x},${p.y}`).join(' ')}" fill="none" stroke="rgba(255,255,255,.05)" stroke-width="${g===100?1:.6}"/>`})
+  pts.forEach(p=>{const o=xy(p.ang,100);h+=`<line x1="${cx}" y1="${cy}" x2="${o.x}" y2="${o.y}" stroke="rgba(255,255,255,.05)" stroke-width=".6"/>`})
+  const area=pts.map(p=>xy(p.ang,p.v))
+  h+=`<polygon points="${area.map(p=>`${p.x},${p.y}`).join(' ')}" fill="rgba(192,57,43,.18)" stroke="#e74c3c" stroke-width="1.6"/>`
+  area.forEach(p=>{h+=`<circle cx="${p.x}" cy="${p.y}" r="3" fill="#e74c3c" stroke="#07090c" stroke-width="1.2"/>`})
+  pts.forEach(p=>{const lp=xy(p.ang,100+18);h+=`<text x="${lp.x}" y="${lp.y+3}" text-anchor="middle" font-size="8.5" fill="#8e98a8">${CON_EM[p.lbl.split(' ')[0]]||''} ${p.v}%</text>`})
+  svg.innerHTML=h
+}
+
+function renderSubmitArea(){
+  const a=SEL_ASGN
+  document.getElementById('submit-asgn').innerHTML=`
+    <div style="font-weight:700;font-size:.88rem;margin-bottom:12px">📋 Chọn Bài tập</div>
+    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:14px">
+      ${ASGNS.filter(x=>x.status==='open').map(x=>`<div onclick="SEL_ASGN=ASGNS[${ASGNS.indexOf(x)}];renderSubmitArea()" style="padding:9px 13px;border-radius:var(--r6);border:1px solid ${x.id===a.id?'var(--r)':'var(--b1)'};background:${x.id===a.id?'rgba(192,57,43,.09)':'var(--bg3)'};cursor:pointer;transition:all .18s"><div style="font-weight:600;font-size:.83rem">${x.title}</div><div style="font-size:.68rem;color:var(--t3)">DL: ${fmtDate(x.dl)}</div></div>`).join('')}
+    </div>
+    <div style="background:var(--bg3);border-radius:var(--r10);padding:13px;border:1px solid var(--b1)">
+      <div style="font-size:.74rem;font-weight:700;color:var(--t3);margin-bottom:5px">📖 ĐỀ BÀI</div>
+      <div style="font-size:.84rem;line-height:1.7">${a.desc}</div>
+      <div style="display:flex;gap:5px;margin-top:9px;flex-wrap:wrap">${a.cons.map(c=>`<span class="badge bdp">${CON_EM[c]} ${CON_LBL[c]}</span>`).join('')}<span class="badge bdb">💻 ${a.lang}</span></div>
+    </div>
+  `
+  document.getElementById('submit-editor').innerHTML=`
+    <div style="font-weight:700;font-size:.88rem;margin-bottom:10px">💻 Viết hoặc dán Code tại đây</div>
+    <textarea class="input" id="code-editor" style="font-family:var(--mono);font-size:.79rem;min-height:260px;line-height:1.75;background:var(--bg0)" placeholder="#include <iostream>&#10;using namespace std;&#10;&#10;int main() {&#10;    // Viết code tại đây...&#10;    return 0;&#10;}"></textarea>
+    <div style="display:flex;gap:9px;margin-top:11px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-primary" onclick="runPipeline()" id="sub-btn">🚀 Nộp bài & Phân tích</button>
+      <button class="btn btn-ghost btn-sm" onclick="fillSample()">📝 Code mẫu</button>
+    </div>
+  `
+  resetPipeline()
+}
+
+function fillSample(){
+  const el=document.getElementById('code-editor');if(el)el.value=`#include <iostream>\nusing namespace std;\n\nvoid sapXep(int a[], int n) {\n    for (int i = 0; i < n-1; i++)\n        for (int j = i+1; j < n; j++)\n            if (a[i] > a[j]) {\n                int t = a[i]; a[i] = a[j]; a[j] = t;\n            }\n}\n\nint main() {\n    int n;\n    cout << "Nhap so phan tu: ";\n    cin >> n;\n    int a[100];\n    for (int i = 0; i < n; i++) cin >> a[i];\n    sapXep(a, n);\n    cout << "Mang da sap xep: ";\n    for (int i = 0; i < n; i++) cout << a[i] << " ";\n    return 0;\n}`
+}
+
+const PIPE_STEPS=[
+  {i:'📨',n:'Nhận bài nộp',d:'Xác thực file code, kiểm tra kích thước & định dạng'},
+  {i:'🔍',n:'UA Scanner — Quét AST',d:'Phân tích cú pháp, xây dựng call graph, knowledge graph'},
+  {i:'📐',n:'Static Analysis',d:'Naming conventions, cyclomatic complexity, code smells'},
+  {i:'⚙️',n:'Test Runner (Sandbox)',d:'Chạy test cases, kiểm tra output đúng đắn'},
+  {i:'🧠',n:'LLM Engine — Rubric 3 Tầng',d:'Phân tích Correctness + Code Quality + Computational Thinking'},
+  {i:'💾',n:'Cập nhật Hồ sơ Năng lực',d:'Merge kết quả, cập nhật Radar Chart & EWS score'},
+]
+
+function resetPipeline(){
+  document.getElementById('pipe-steps').innerHTML=PIPE_STEPS.map((s,i)=>`<div class="pipe-step" id="ps-${i}"><div class="pipe-icon" id="pi-${i}" style="background:var(--bg4)">${s.i}</div><div style="flex:1;min-width:0"><div style="font-size:.79rem;font-weight:600">${s.n}</div><div style="font-size:.68rem;color:var(--t3);margin-top:1px">${s.d}</div></div><div id="pst-${i}" style="font-size:.68rem;color:var(--t3)">⏳</div></div>`).join('')
+  document.getElementById('fb-result').innerHTML=''
+}
+
+async function runPipeline(){
+  if(PIPE_RUNNING)return
+  const code=document.getElementById('code-editor')?.value
+  if(!code?.trim()){toast('Vui lòng nhập code trước',true);return}
+  PIPE_RUNNING=true
+  const btn=document.getElementById('sub-btn')
+  if(btn){btn.disabled=true;btn.innerHTML='<div class="spin"></div> Đang phân tích...'}
+  resetPipeline()
+  for(let i=0;i<PIPE_STEPS.length;i++){
+    const ps=document.getElementById(`ps-${i}`),pi=document.getElementById(`pi-${i}`),pst=document.getElementById(`pst-${i}`)
+    ps?.classList.add('active');if(pi)pi.innerHTML='<div class="spin"></div>'
+    if(pst)pst.innerHTML='<div class="spin"></div>'
+    await delay(850+Math.random()*350)
+    ps?.classList.remove('active');ps?.classList.add('done');if(pi)pi.innerHTML=PIPE_STEPS[i].i
+    if(pst)pst.innerHTML='<span style="color:#34d399;font-weight:700">✓</span>'
+  }
+  PIPE_RUNNING=false
+  if(btn){btn.disabled=false;btn.innerHTML='🔄 Nộp lại'}
+  showFeedback(code)
+  toast('Phân tích hoàn tất!')
+}
+
+function showFeedback(code){
+  const hasAI=code.includes('vector ')||code.includes('lambda')||/auto\s/.test(code)||(/sort\s*\(/.test(code)&&!code.includes('void sort'))
+  const hasInf=code.includes('while')&&!/\+\+|(\+=)/.test(code.replace(/\/\/.*/g,''))
+  const hasFunc=code.includes('void ')||/\w+\s+\w+\s*\(/.test(code)
+  let t1=hasInf?12:38,t2=hasAI?25:hasFunc?32:27,t3=hasInf?10:hasFunc?24:19
+  let total=t1+t2+t3
+  let st=total>=70?'passed':total>=50?'warning':'failed'
+  let fb=hasInf
+    ?'🔴 LỖI NGHIÊM TRỌNG: Vòng lặp while không cập nhật biến điều kiện → lặp vô hạn. Thêm i++ vào cuối thân vòng lặp để chương trình có thể thoát.'
+    :hasAI
+    ?'⚠️ Code sử dụng cú pháp/thư viện nâng cao (vector, lambda, auto) chưa được dạy. Nghi vấn AI-generated. Giảng viên sẽ được thông báo.'
+    :total>=70
+    ?'✅ Bài làm đạt yêu cầu. Cấu trúc code rõ ràng, logic đúng. Có thể cải thiện bằng cách thêm prompt nhập liệu và comment giải thích.'
+    :'Bài chưa hoàn chỉnh. Kiểm tra lại logic và đảm bảo chương trình in ra kết quả đúng yêu cầu đề bài.'
+  document.getElementById('fb-result').innerHTML=`
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--b1)">
+        <div><div style="font-weight:700;font-size:.88rem;margin-bottom:3px">📊 Kết quả Phân tích LLM + UA</div><div style="font-size:.7rem;color:var(--t3)">${SEL_ASGN.title}</div></div>
+        <div style="text-align:center"><div style="font-size:1.9rem;font-weight:900;line-height:1;color:${SC(total)}">${total}</div><div style="font-size:.62rem;color:var(--t3)">/100</div><span class="badge ${st==='passed'?'bdg':st==='failed'?'bdr':'bdy'}" style="margin-top:4px">${st==='passed'?'✅ Passed':st==='failed'?'❌ Failed':'⚠️ Warning'}</span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:13px">
+        ${[{n:'T1: Correctness',v:t1,m:40,c:'#60a5fa'},{n:'T2: Code Quality',v:t2,m:35,c:'#a78bfa'},{n:'T3: CT',v:t3,m:25,c:'#fb923c'}].map(t=>`<div class="tier-blk" style="border-color:${t.c}"><div style="font-size:.62rem;font-weight:700;color:var(--t3);margin-bottom:3px">${t.n}</div><div style="font-size:1.2rem;font-weight:800;color:${t.c}">${t.v}<span style="font-size:.7rem">/${t.m}</span></div><div class="prog-wrap" style="margin-top:5px"><div class="prog-bar" style="width:${(t.v/t.m)*100}%;background:${t.c}"></div></div></div>`).join('')}
+      </div>
+      <div class="fb ${st==='passed'?'fb-pass':st==='failed'?'fb-fail':'fb-warn'}" style="margin-bottom:10px">
+        <div style="font-size:.62rem;font-weight:700;color:var(--t3);margin-bottom:5px">🤖 LLM ANALYSIS</div>
+        <div style="font-size:.83rem;line-height:1.7">${fb}</div>
+      </div>
+      ${hasAI?`<div class="fb fb-ai"><div style="font-size:.62rem;font-weight:700;color:#f97316;margin-bottom:4px">🚨 AI-GENERATED CODE ALERT — Confidence: 87%</div><div style="font-size:.79rem;line-height:1.6;color:#fed7aa">Code sử dụng cú pháp vượt chương trình (vector/lambda/auto). Giảng viên được thông báo để phỏng vấn trực tiếp.</div></div>`:''}
+      <div style="font-size:.68rem;color:var(--t3);margin-top:10px">✅ UA đã phân tích ${code.split('\n').length} dòng · Hồ sơ Năng lực đã cập nhật</div>
+    </div>
+  `
+}
+
+function renderSvProfile(){
+  const s=CUR_SV
+  // Radar card
+  document.getElementById('sv-radar-card').innerHTML=`
+    <div style="font-weight:700;font-size:.88rem;margin-bottom:3px">🎯 Biểu đồ Năng lực Tổng hợp</div>
+    <div style="font-size:.72rem;color:var(--t2);margin-bottom:14px">Tích lũy qua ${s.sessions.filter(x=>x.at>0).length} buổi học</div>
+    <svg id="full-radar" width="100%" height="240" style="display:block;max-width:280px;margin:0 auto"></svg>
+    <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:14px;justify-content:center">
+      ${CONS.map(c=>`<div style="display:flex;align-items:center;gap:5px;font-size:.73rem"><span style="color:${SC(s.cm[c])}">${CON_EM[c]}</span>${CON_LBL[c]}: <b style="color:${SC(s.cm[c])}">${s.cm[c]}%</b></div>`).join('')}
+    </div>
+  `
+  setTimeout(()=>{
+    const svg=document.getElementById('full-radar');if(!svg)return
+    const W=svg.clientWidth||240,H=240,cx=W/2,cy=H/2,r=Math.min(W,H)/2-36
+    const pts=CONS.map((c,i)=>({ang:i*(360/5)-90,v:s.cm[c],lbl:CON_LBL[c]}))
+    const xy=(ang,v)=>{const rad=ang*Math.PI/180;return{x:cx+(v/100)*r*Math.cos(rad),y:cy+(v/100)*r*Math.sin(rad)}}
+    let h=''
+    ;[25,50,75,100].forEach(g=>{const gp=pts.map(p=>xy(p.ang,g));h+=`<polygon points="${gp.map(p=>`${p.x},${p.y}`).join(' ')}" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="${g===100?1.2:.6}" stroke-dasharray="${g<100?'2 3':''}"/>`})
+    pts.forEach(p=>{const o=xy(p.ang,100);h+=`<line x1="${cx}" y1="${cy}" x2="${o.x}" y2="${o.y}" stroke="rgba(255,255,255,.06)" stroke-width=".6"/>`})
+    const area=pts.map(p=>xy(p.ang,p.v))
+    h+=`<polygon points="${area.map(p=>`${p.x},${p.y}`).join(' ')}" fill="rgba(192,57,43,.2)" stroke="#e74c3c" stroke-width="1.8"/>`
+    area.forEach(p=>{h+=`<circle cx="${p.x}" cy="${p.y}" r="4" fill="#e74c3c" stroke="#07090c" stroke-width="1.5"/>`})
+    pts.forEach(p=>{const lp=xy(p.ang,100+20);h+=`<text x="${lp.x}" y="${lp.y+3}" text-anchor="middle" font-size="9" fill="#8e98a8">${CON_EM[p.lbl.split(' ')[0]]||''} ${p.lbl}</text>`})
+    svg.innerHTML=h
+  },50)
+  // Strengths card
+  document.getElementById('sv-strength-card').innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div><div style="font-weight:700;font-size:.83rem;color:#34d399;margin-bottom:9px">✅ Điểm mạnh</div>${s.strengths.map(x=>`<div style="display:flex;gap:6px;align-items:flex-start;margin-bottom:7px;font-size:.76rem;line-height:1.5;color:var(--t2)"><span style="color:#34d399;flex-shrink:0">★</span>${x}</div>`).join('')}</div>
+      <div><div style="font-weight:700;font-size:.83rem;color:#f87171;margin-bottom:9px">🎯 Cần cải thiện</div>${s.improve.map(x=>`<div style="display:flex;gap:6px;align-items:flex-start;margin-bottom:7px;font-size:.76rem;line-height:1.5;color:var(--t2)"><span style="color:#f87171;flex-shrink:0">→</span>${x}</div>`).join('')}</div>
+    </div>
+  `
+  // Timeline card
+  document.getElementById('sv-tl-card').innerHTML=`
+    <div style="font-weight:700;font-size:.88rem;margin-bottom:14px">📅 Lịch sử Tiến trình</div>
+    <div class="tl">
+      ${s.sessions.map((sess,i)=>{
+        const sb=SB(sess.st)
+        const dc=sess.st==='passed'?'rgba(16,185,129,.2)':sess.st==='failed'?'rgba(248,113,113,.2)':sess.st==='warning'?'rgba(251,191,36,.2)':'var(--bg4)'
+        const bc=sess.st==='passed'?'#34d399':sess.st==='failed'?'#f87171':sess.st==='warning'?'#fbbf24':'var(--b2)'
+        return`<div class="tl-item">
+          <div class="tl-dot" style="background:${dc};border-color:${bc}">${sb.i}</div>
+          <div class="tl-body">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start"><div style="font-size:.84rem;font-weight:600">${sess.n}</div><span style="font-size:.88rem;font-weight:800;color:${SC(sess.sc)}">${sess.sc||'—'}</span></div>
+            <div style="font-size:.7rem;color:var(--t3)">${sess.at} lần nộp · ${fmtDate(sess.date)}</div>
+            ${sess.fb&&sess.at>0?`<div style="font-size:.72rem;color:var(--t2);margin-top:3px;line-height:1.5">${sess.fb.substring(0,90)}...</div>`:''}
+          </div>
+        </div>`
+      }).join('')}
+    </div>
+  `
+  // Misconceptions card
+  document.getElementById('sv-misc-card').innerHTML=`
+    <div style="font-weight:700;font-size:.88rem;margin-bottom:11px">🧠 Lỗi Tư duy Cần khắc phục</div>
+    ${s.misc.length
+      ?s.misc.map(m=>`<div class="misc">${m}<div style="margin-top:4px;font-size:.67rem;color:var(--t3)">Gợi ý: Ôn lại concept và làm thêm bài tập liên quan</div></div>`).join('')
+      :`<div style="text-align:center;color:var(--t3);padding:22px;font-size:.82rem">🎉 Chưa có lỗi tư duy tích lũy nào. Tiếp tục giữ vững!</div>`}
+  `
+}
+
+// ══════════════════════════════════════════════════
+// RADAR (full)
+// ══════════════════════════════════════════════════
+function drawRadar(svgId,cm,size){
+  const svg=document.getElementById(svgId);if(!svg)return
+  const cx=size/2,cy=size/2,r=size/2-32
+  const pts=CONS.map((c,i)=>({ang:i*(360/5)-90,v:cm[c],lbl:CON_LBL[c]}))
+  const xy=(ang,v)=>{const rad=ang*Math.PI/180;return{x:cx+(v/100)*r*Math.cos(rad),y:cy+(v/100)*r*Math.sin(rad)}}
+  let h=''
+  ;[25,50,75,100].forEach(g=>{const gp=pts.map(p=>xy(p.ang,g));h+=`<polygon points="${gp.map(p=>`${p.x},${p.y}`).join(' ')}" fill="none" stroke="rgba(255,255,255,.055)" stroke-width="${g===100?1:.6}" stroke-dasharray="${g<100?'2 3':''}"/>`})
+  pts.forEach(p=>{const o=xy(p.ang,100);h+=`<line x1="${cx}" y1="${cy}" x2="${o.x}" y2="${o.y}" stroke="rgba(255,255,255,.055)" stroke-width=".6"/>`})
+  const area=pts.map(p=>xy(p.ang,p.v))
+  h+=`<polygon points="${area.map(p=>`${p.x},${p.y}`).join(' ')}" fill="rgba(192,57,43,.2)" stroke="#e74c3c" stroke-width="1.6" stroke-linejoin="round"/>`
+  area.forEach(p=>{h+=`<circle cx="${p.x}" cy="${p.y}" r="3.5" fill="#e74c3c" stroke="#07090c" stroke-width="1.4"/>`})
+  pts.forEach(p=>{const lp=xy(p.ang,100+18);const ang=((p.ang%360)+360)%360;const anc=ang>20&&ang<160?'start':ang>200&&ang<340?'end':'middle';h+=`<text x="${lp.x}" y="${lp.y+3}" text-anchor="${anc}" font-size="9" fill="#8e98a8" font-weight="600">${CON_EM[p.lbl.split(' ')[0]]||''} ${p.lbl} (${p.v}%)</text>`})
+  svg.innerHTML=h
+}
+
+// ══════════════════════════════════════════════════
+// ASSIGNMENT MODAL
+// ══════════════════════════════════════════════════
+function renderConceptCBs(){
+  const el=document.getElementById('concept-cbs');if(!el)return
+  el.innerHTML=CONS.map(c=>`<label style="display:flex;align-items:center;gap:5px;cursor:pointer;background:var(--bg3);border:1px solid var(--b1);border-radius:var(--r6);padding:5px 9px;font-size:.76rem"><input type="checkbox" value="${c}" style="accent-color:var(--r)"> ${CON_EM[c]} ${CON_LBL[c]}</label>`).join('')
+}
+function openCreateAsgn(){document.getElementById('asgn-modal').classList.add('open');renderConceptCBs()}
+function closeCreateAsgn(){document.getElementById('asgn-modal').classList.remove('open')}
+function createAsgn(){
+  const title=document.getElementById('a-title').value
+  const desc=document.getElementById('a-desc').value
+  if(!title.trim()||!desc.trim()){toast('Điền đầy đủ thông tin',true);return}
+  const cons=[];document.querySelectorAll('#concept-cbs input:checked').forEach(cb=>cons.push(cb.value))
+  ASGNS.push({id:'a'+(ASGNS.length+1),title,desc,lang:document.getElementById('a-lang').value,dl:document.getElementById('a-deadline').value,cons,status:'open'})
+  closeCreateAsgn();toast('Bài tập đã tạo và thông báo sinh viên!');renderAsgnList();renderSubStats()
+}
+
+// ══════════════════════════════════════════════════
+// MODAL (student detail)
+// ══════════════════════════════════════════════════
+function closeSvModal(){document.getElementById('sv-modal').classList.remove('open')}
+</script>
+</body>
+</html>

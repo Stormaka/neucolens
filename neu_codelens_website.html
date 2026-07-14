@@ -1,0 +1,1390 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NEU-CodeLens | Hệ thống đánh giá lập trình thích ứng</title>
+  <meta name="description" content="NEU-CodeLens — Hệ thống đánh giá năng lực lập trình thích ứng sử dụng Mô hình Ngôn ngữ Lớn tại Đại học Kinh tế Quốc dân." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #080c14;
+      --bg2: #0d1424;
+      --bg3: #111827;
+      --surface: rgba(255,255,255,0.04);
+      --surface2: rgba(255,255,255,0.07);
+      --border: rgba(255,255,255,0.08);
+      --border2: rgba(255,255,255,0.14);
+      --primary: #6366f1;
+      --primary-glow: rgba(99,102,241,0.35);
+      --secondary: #06b6d4;
+      --accent: #f59e0b;
+      --green: #10b981;
+      --red: #ef4444;
+      --purple: #a855f7;
+      --text: #f1f5f9;
+      --text2: #94a3b8;
+      --text3: #64748b;
+      --radius: 16px;
+      --radius-sm: 10px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow-x: hidden;
+      line-height: 1.6;
+    }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg2); }
+    ::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 3px; }
+
+    /* ── Nav ── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 2rem; height: 64px;
+      background: rgba(8,12,20,0.85);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-logo {
+      display: flex; align-items: center; gap: 10px;
+      font-weight: 800; font-size: 1.15rem; letter-spacing: -0.5px;
+    }
+    .logo-icon {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--primary), var(--purple));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.1rem;
+    }
+    .nav-links { display: flex; gap: 2rem; }
+    .nav-links a {
+      color: var(--text2); text-decoration: none; font-size: 0.875rem;
+      font-weight: 500; transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text); }
+    .nav-badge {
+      background: linear-gradient(135deg, var(--primary), var(--purple));
+      padding: 6px 16px; border-radius: 99px;
+      font-size: 0.8rem; font-weight: 600; color: white;
+      text-decoration: none;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      position: relative; overflow: hidden;
+      padding: 120px 2rem 80px;
+    }
+    .hero-bg {
+      position: absolute; inset: 0; z-index: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% -10%, rgba(99,102,241,0.18) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 80% 50%, rgba(168,85,247,0.10) 0%, transparent 55%),
+        radial-gradient(ellipse 50% 50% at 10% 80%, rgba(6,182,212,0.08) 0%, transparent 50%);
+    }
+    .hero-grid {
+      position: absolute; inset: 0; z-index: 0;
+      background-image:
+        linear-gradient(rgba(99,102,241,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(99,102,241,0.04) 1px, transparent 1px);
+      background-size: 60px 60px;
+      mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 30%, transparent 100%);
+    }
+    .hero-content { position: relative; z-index: 1; text-align: center; max-width: 900px; }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(99,102,241,0.12); border: 1px solid rgba(99,102,241,0.3);
+      padding: 6px 16px; border-radius: 99px; font-size: 0.8rem;
+      color: #a5b4fc; font-weight: 500; margin-bottom: 2rem;
+      animation: fadeUp 0.6s ease both;
+    }
+    .hero-badge .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--primary); animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(1.3)} }
+    h1 {
+      font-size: clamp(2.4rem, 6vw, 4.2rem);
+      font-weight: 900; line-height: 1.1; letter-spacing: -2px;
+      animation: fadeUp 0.6s 0.1s ease both;
+    }
+    h1 .gradient-text {
+      background: linear-gradient(135deg, #818cf8 0%, #c084fc 50%, #06b6d4 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-sub {
+      margin-top: 1.5rem; font-size: 1.1rem; color: var(--text2);
+      max-width: 640px; margin-left: auto; margin-right: auto;
+      animation: fadeUp 0.6s 0.2s ease both;
+    }
+    .hero-cta {
+      margin-top: 2.5rem; display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;
+      animation: fadeUp 0.6s 0.3s ease both;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), var(--purple));
+      color: white; padding: 14px 28px; border-radius: 12px;
+      font-weight: 600; font-size: 0.9rem; text-decoration: none;
+      border: none; cursor: pointer;
+      box-shadow: 0 0 30px var(--primary-glow);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 0 50px var(--primary-glow); }
+    .btn-secondary {
+      background: var(--surface2); color: var(--text); padding: 14px 28px;
+      border-radius: 12px; font-weight: 600; font-size: 0.9rem;
+      text-decoration: none; border: 1px solid var(--border2);
+      transition: background 0.2s, transform 0.2s;
+    }
+    .btn-secondary:hover { background: rgba(255,255,255,0.12); transform: translateY(-2px); }
+
+    /* ── Stats strip ── */
+    .stats-strip {
+      display: flex; gap: 0; flex-wrap: wrap;
+      margin-top: 4rem; padding: 0 1rem;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--surface); overflow: hidden;
+      animation: fadeUp 0.6s 0.4s ease both;
+    }
+    .stat-item {
+      flex: 1; min-width: 130px; padding: 1.5rem 1rem; text-align: center;
+      border-right: 1px solid var(--border);
+      transition: background 0.2s;
+    }
+    .stat-item:last-child { border-right: none; }
+    .stat-item:hover { background: var(--surface2); }
+    .stat-num { font-size: 2rem; font-weight: 800; letter-spacing: -1px; }
+    .stat-num.blue { color: #818cf8; }
+    .stat-num.cyan { color: var(--secondary); }
+    .stat-num.green { color: var(--green); }
+    .stat-num.amber { color: var(--accent); }
+    .stat-num.purple { color: var(--purple); }
+    .stat-label { font-size: 0.75rem; color: var(--text3); margin-top: 4px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    @keyframes fadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+
+    /* ── Section ── */
+    section { padding: 100px 2rem; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .section-tag {
+      display: inline-block; font-size: 0.75rem; font-weight: 600; letter-spacing: 1.5px;
+      text-transform: uppercase; color: var(--primary); margin-bottom: 1rem;
+    }
+    .section-title { font-size: clamp(1.8rem, 4vw, 2.8rem); font-weight: 800; letter-spacing: -1px; margin-bottom: 1rem; }
+    .section-sub { color: var(--text2); font-size: 1rem; max-width: 560px; }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.75rem;
+      transition: border-color 0.3s, background 0.3s, transform 0.3s;
+    }
+    .card:hover { border-color: var(--border2); background: var(--surface2); transform: translateY(-4px); }
+    .card-grid { display: grid; gap: 1.25rem; }
+    .card-grid.cols2 { grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+    .card-grid.cols3 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+    .card-grid.cols4 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+
+    /* ── Architecture ── */
+    .arch-section { background: var(--bg2); }
+    .arch-diagram {
+      background: var(--bg3); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 2rem; margin-top: 2.5rem;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .layer-row {
+      display: flex; align-items: stretch; gap: 0; margin-bottom: 1px;
+      border-radius: 10px; overflow: hidden;
+    }
+    .layer-label {
+      width: 200px; flex-shrink: 0;
+      display: flex; align-items: center;
+      padding: 14px 16px; font-size: 0.75rem; font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+    .layer-nodes {
+      flex: 1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+      padding: 10px 12px; border-left: 1px solid rgba(255,255,255,0.06);
+    }
+    .node-chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 10px; border-radius: 6px; font-size: 0.72rem; font-weight: 500;
+      cursor: pointer; transition: transform 0.15s, opacity 0.15s;
+      border: 1px solid transparent;
+    }
+    .node-chip:hover { transform: scale(1.08); }
+    .layer-presentation .layer-label { background: rgba(99,102,241,0.12); color: #a5b4fc; }
+    .layer-presentation .node-chip { background: rgba(99,102,241,0.12); border-color: rgba(99,102,241,0.25); color: #c7d2fe; }
+    .layer-api .layer-label { background: rgba(6,182,212,0.1); color: #67e8f9; }
+    .layer-api .node-chip { background: rgba(6,182,212,0.1); border-color: rgba(6,182,212,0.25); color: #a5f3fc; }
+    .layer-business .layer-label { background: rgba(245,158,11,0.1); color: #fcd34d; }
+    .layer-business .node-chip { background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.25); color: #fde68a; }
+    .layer-research .layer-label { background: rgba(16,185,129,0.1); color: #6ee7b7; }
+    .layer-research .node-chip { background: rgba(16,185,129,0.1); border-color: rgba(16,185,129,0.25); color: #a7f3d0; }
+    .layer-infra .layer-label { background: rgba(168,85,247,0.1); color: #d8b4fe; }
+    .layer-infra .node-chip { background: rgba(168,85,247,0.1); border-color: rgba(168,85,247,0.25); color: #e9d5ff; }
+    .layer-docs .layer-label { background: rgba(148,163,184,0.08); color: #94a3b8; }
+    .layer-docs .node-chip { background: rgba(148,163,184,0.08); border-color: rgba(148,163,184,0.15); color: #cbd5e1; }
+
+    /* ── RQ Cards ── */
+    .rq-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.5rem;
+      display: flex; gap: 1rem;
+      transition: border-color 0.3s, transform 0.3s;
+    }
+    .rq-card:hover { border-color: var(--border2); transform: translateX(4px); }
+    .rq-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem; font-weight: 700; color: var(--primary);
+      background: rgba(99,102,241,0.12); border: 1px solid rgba(99,102,241,0.25);
+      padding: 4px 8px; border-radius: 6px; height: fit-content;
+      white-space: nowrap;
+    }
+    .rq-body h4 { font-size: 0.95rem; font-weight: 600; margin-bottom: 4px; }
+    .rq-body p { font-size: 0.82rem; color: var(--text2); }
+    .rq-status {
+      margin-top: 8px; display: inline-flex; align-items: center; gap: 5px;
+      font-size: 0.72rem; font-weight: 600; padding: 3px 8px; border-radius: 5px;
+    }
+    .rq-status.done { background: rgba(16,185,129,0.15); color: var(--green); }
+    .rq-status.planned { background: rgba(245,158,11,0.12); color: var(--accent); }
+
+    /* ── Results ── */
+    .results-section { background: var(--bg2); }
+    .metric-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.5rem;
+      text-align: center; position: relative; overflow: hidden;
+      transition: transform 0.3s, border-color 0.3s;
+    }
+    .metric-card:hover { transform: translateY(-6px); border-color: var(--border2); }
+    .metric-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    }
+    .metric-card.auc::before { background: linear-gradient(90deg, var(--primary), var(--purple)); }
+    .metric-card.precision::before { background: linear-gradient(90deg, var(--green), var(--secondary)); }
+    .metric-card.recall::before { background: linear-gradient(90deg, var(--accent), #f97316); }
+    .metric-card.f1::before { background: linear-gradient(90deg, var(--secondary), var(--primary)); }
+    .metric-big { font-size: 3rem; font-weight: 900; letter-spacing: -2px; }
+    .metric-big.blue { color: #818cf8; }
+    .metric-big.green { color: var(--green); }
+    .metric-big.amber { color: var(--accent); }
+    .metric-big.cyan { color: var(--secondary); }
+    .metric-label { font-size: 0.82rem; color: var(--text2); margin-top: 6px; font-weight: 500; }
+    .metric-model { font-size: 0.72rem; color: var(--text3); margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
+
+    /* ── Progress bars ── */
+    .progress-row { margin-bottom: 1rem; }
+    .progress-header { display: flex; justify-content: space-between; margin-bottom: 6px; }
+    .progress-name { font-size: 0.82rem; font-weight: 500; }
+    .progress-val { font-size: 0.82rem; font-weight: 700; color: var(--text); }
+    .progress-bar { height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
+    .progress-fill {
+      height: 100%; border-radius: 4px;
+      transition: width 1.5s cubic-bezier(0.22,1,0.36,1);
+      width: 0%;
+    }
+
+    /* ── Rubric ── */
+    .rubric-tier {
+      border: 1px solid var(--border); border-radius: var(--radius);
+      overflow: hidden; margin-bottom: 1rem;
+    }
+    .rubric-tier-header {
+      padding: 1rem 1.5rem; display: flex; justify-content: space-between; align-items: center;
+      cursor: pointer; transition: background 0.2s;
+    }
+    .rubric-tier-header:hover { background: var(--surface2); }
+    .rubric-tier-title { font-size: 1rem; font-weight: 700; }
+    .rubric-tier-score {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.9rem;
+      font-weight: 700; padding: 4px 12px; border-radius: 6px;
+    }
+    .tier1 .rubric-tier-header { background: rgba(99,102,241,0.08); }
+    .tier1 .rubric-tier-score { background: rgba(99,102,241,0.15); color: #a5b4fc; }
+    .tier2 .rubric-tier-header { background: rgba(16,185,129,0.08); }
+    .tier2 .rubric-tier-score { background: rgba(16,185,129,0.15); color: #6ee7b7; }
+    .tier3 .rubric-tier-header { background: rgba(168,85,247,0.08); }
+    .tier3 .rubric-tier-score { background: rgba(168,85,247,0.15); color: #d8b4fe; }
+    .rubric-criteria { padding: 0 1.5rem 1rem; display: none; }
+    .rubric-criteria.open { display: block; }
+    .criteria-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+      font-size: 0.85rem;
+    }
+    .criteria-row:last-child { border-bottom: none; }
+    .criteria-pts {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;
+      font-weight: 700; color: var(--accent); white-space: nowrap;
+    }
+
+    /* ── Knowledge Graph ── */
+    .kg-section { background: var(--bg2); }
+    #kg-canvas {
+      width: 100%; height: 500px; border-radius: var(--radius);
+      border: 1px solid var(--border); background: var(--bg3);
+      cursor: grab; display: block;
+    }
+    #kg-canvas:active { cursor: grabbing; }
+    .kg-legend {
+      display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1rem;
+    }
+    .kg-legend-item {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 0.78rem; color: var(--text2);
+    }
+    .kg-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+    /* ── Arch Analysis ── */
+    .score-ring-container { display: flex; flex-direction: column; align-items: center; }
+    .score-ring { position: relative; width: 160px; height: 160px; }
+    .score-ring svg { transform: rotate(-90deg); }
+    .score-ring circle { fill: none; stroke-width: 12; }
+    .score-ring .bg-circle { stroke: rgba(255,255,255,0.06); }
+    .score-ring .progress-circle {
+      stroke: url(#scoreGrad); stroke-linecap: round;
+      stroke-dasharray: 408; stroke-dashoffset: 408;
+      transition: stroke-dashoffset 1.5s cubic-bezier(0.22,1,0.36,1);
+    }
+    .score-ring-num {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+    }
+    .score-ring-num .num { font-size: 2.2rem; font-weight: 900; letter-spacing: -2px; }
+    .score-ring-num .label { font-size: 0.7rem; color: var(--text3); font-weight: 500; }
+
+    .pattern-chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 5px 10px; border-radius: 6px; font-size: 0.78rem;
+      font-weight: 500; margin: 3px;
+    }
+    .pattern-good { background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.25); color: var(--green); }
+    .pattern-warn { background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.25); color: var(--accent); }
+    .pattern-info { background: rgba(99,102,241,0.12); border: 1px solid rgba(99,102,241,0.25); color: #a5b4fc; }
+
+    .rec-item {
+      display: flex; gap: 12px; padding: 1rem; border-radius: var(--radius-sm);
+      background: var(--surface); border: 1px solid var(--border);
+      margin-bottom: 8px; transition: border-color 0.2s;
+    }
+    .rec-item:hover { border-color: var(--border2); }
+    .priority-badge {
+      padding: 2px 8px; border-radius: 4px; font-size: 0.68rem; font-weight: 700;
+      white-space: nowrap; height: fit-content; letter-spacing: 0.3px;
+    }
+    .priority-high { background: rgba(239,68,68,0.15); color: #f87171; }
+    .priority-medium { background: rgba(245,158,11,0.15); color: #fbbf24; }
+    .priority-low { background: rgba(148,163,184,0.12); color: #94a3b8; }
+    .rec-title { font-size: 0.88rem; font-weight: 600; margin-bottom: 4px; }
+    .rec-desc { font-size: 0.78rem; color: var(--text2); }
+    .rec-effort {
+      margin-top: 5px; font-size: 0.72rem; color: var(--text3);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* ── Tour ── */
+    .tour-section { }
+    .tour-step {
+      display: flex; gap: 1.5rem; margin-bottom: 1.5rem;
+      align-items: flex-start;
+    }
+    .tour-step-num {
+      width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+      background: linear-gradient(135deg, var(--primary), var(--purple));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.85rem; font-weight: 700; position: relative;
+    }
+    .tour-step-num::after {
+      content: ''; position: absolute; top: 36px; left: 50%;
+      transform: translateX(-50%); width: 2px; height: calc(100% + 0.5rem);
+      background: linear-gradient(180deg, rgba(99,102,241,0.4), transparent);
+    }
+    .tour-step:last-child .tour-step-num::after { display: none; }
+    .tour-step-content { flex: 1; }
+    .tour-step-title { font-size: 1rem; font-weight: 700; margin-bottom: 5px; }
+    .tour-step-desc { font-size: 0.85rem; color: var(--text2); }
+    .tour-step-nodes {
+      display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px;
+    }
+    .tour-node-tag {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.7rem;
+      background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.2);
+      color: #a5b4fc; padding: 2px 7px; border-radius: 4px;
+    }
+
+    /* ── Footer ── */
+    footer {
+      background: var(--bg2); border-top: 1px solid var(--border);
+      padding: 3rem 2rem; text-align: center;
+    }
+    .footer-logo { font-weight: 800; font-size: 1.2rem; margin-bottom: 0.5rem; }
+    .footer-sub { color: var(--text3); font-size: 0.85rem; margin-bottom: 1.5rem; }
+    .footer-links { display: flex; gap: 2rem; justify-content: center; flex-wrap: wrap; }
+    .footer-links a { color: var(--text2); text-decoration: none; font-size: 0.85rem; transition: color 0.2s; }
+    .footer-links a:hover { color: var(--text); }
+    .footer-copy { color: var(--text3); font-size: 0.78rem; margin-top: 2rem; }
+
+    /* ── Tabs ── */
+    .tab-nav { display: flex; gap: 4px; margin-bottom: 1.5rem; flex-wrap: wrap; }
+    .tab-btn {
+      padding: 8px 18px; border-radius: 8px; font-size: 0.83rem; font-weight: 600;
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text2); cursor: pointer; transition: all 0.2s;
+    }
+    .tab-btn.active {
+      background: rgba(99,102,241,0.15); border-color: rgba(99,102,241,0.4);
+      color: var(--text);
+    }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* ── Anti-pattern ── */
+    .antipattern-item {
+      display: flex; gap: 10px; padding: 12px; border-radius: var(--radius-sm);
+      background: var(--surface); border: 1px solid var(--border); margin-bottom: 8px;
+    }
+    .severity-badge {
+      padding: 2px 8px; border-radius: 4px; font-size: 0.68rem; font-weight: 700; height: fit-content;
+    }
+    .severity-warning { background: rgba(245,158,11,0.15); color: var(--accent); }
+    .severity-info { background: rgba(99,102,241,0.12); color: #a5b4fc; }
+    .antipattern-name { font-size: 0.88rem; font-weight: 600; margin-bottom: 3px; }
+    .antipattern-desc { font-size: 0.78rem; color: var(--text2); }
+
+    /* ── Tooltip ── */
+    .tooltip {
+      position: fixed; z-index: 999; pointer-events: none; opacity: 0;
+      background: var(--bg2); border: 1px solid var(--border2);
+      border-radius: 8px; padding: 8px 12px; max-width: 260px;
+      font-size: 0.78rem; color: var(--text2);
+      transition: opacity 0.2s; box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+    .tooltip.visible { opacity: 1; }
+    .tooltip strong { color: var(--text); display: block; margin-bottom: 3px; font-size: 0.82rem; }
+
+    /* ── Animated number ── */
+    .count-up { display: inline-block; }
+
+    /* ── Observe animation ── */
+    .observe-fade {
+      opacity: 0; transform: translateY(20px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+    .observe-fade.visible { opacity: 1; transform: translateY(0); }
+
+    @media (max-width: 768px) {
+      .nav-links { display: none; }
+      .layer-label { width: 120px; font-size: 0.65rem; }
+      .stat-item { min-width: 100px; }
+      .tour-step-num::after { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+  <div class="nav-logo">
+    <div class="logo-icon">🔍</div>
+    NEU-CodeLens
+  </div>
+  <div class="nav-links">
+    <a href="#architecture">Kiến trúc</a>
+    <a href="#results">Kết quả</a>
+    <a href="#rubric">Rubric</a>
+    <a href="#graph">Knowledge Graph</a>
+    <a href="#analysis">Phân tích</a>
+    <a href="#tour">Tour</a>
+  </div>
+  <a href="#results" class="nav-badge">AUC = 0.850 🎯</a>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-grid"></div>
+  <div class="hero-content">
+    <div class="hero-badge">
+      <span class="dot"></span>
+      Đại học Kinh tế Quốc dân · KLTN 2025–2026
+    </div>
+    <h1>
+      <span class="gradient-text">NEU-CodeLens</span><br />
+      Đánh giá lập trình<br />thích ứng bằng LLM
+    </h1>
+    <p class="hero-sub">
+      Hệ thống tích hợp LLM để đánh giá năng lực lập trình đa chiều — Correctness, Code Quality, và Computational Thinking — kết hợp Early Warning System phát hiện sinh viên nguy cơ từ tuần đầu tiên.
+    </p>
+    <div class="hero-cta">
+      <a href="#results" class="btn-primary">📊 Xem kết quả thực nghiệm</a>
+      <a href="#graph" class="btn-secondary">🗺️ Knowledge Graph</a>
+    </div>
+    <div class="stats-strip">
+      <div class="stat-item"><div class="stat-num blue count-up" data-target="373">0</div><div class="stat-label">Sinh viên S19</div></div>
+      <div class="stat-item"><div class="stat-num cyan count-up" data-target="201570">0</div><div class="stat-label">Programming Events</div></div>
+      <div class="stat-item"><div class="stat-num green">0.850</div><div class="stat-label">AUC-ROC (RF)</div></div>
+      <div class="stat-item"><div class="stat-num amber count-up" data-target="5">0</div><div class="stat-label">Research Questions</div></div>
+      <div class="stat-item"><div class="stat-num purple count-up" data-target="100">0</div><div class="stat-label">Điểm Rubric</div></div>
+      <div class="stat-item"><div class="stat-num blue count-up" data-target="82">0</div><div class="stat-label">Architecture Score</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- Architecture -->
+<section id="architecture" class="arch-section">
+  <div class="container">
+    <div class="observe-fade">
+      <span class="section-tag">Kiến trúc hệ thống</span>
+      <h2 class="section-title">6 tầng kiến trúc rõ ràng</h2>
+      <p class="section-sub">Kết quả phân tích từ <strong>understand-anything</strong> — 30 nodes, 30 edges, phân thành 6 tầng chức năng.</p>
+    </div>
+    <div class="arch-diagram observe-fade">
+      <div class="layer-row layer-presentation">
+        <div class="layer-label">🎨 Presentation<br/><small style="opacity:.6;font-size:.65rem">React + TypeScript</small></div>
+        <div class="layer-nodes">
+          <span class="node-chip" onclick="showTooltip(event,'LandingPage.tsx','Trang đăng nhập phân vai trò sinh viên / giảng viên')">📄 LandingPage</span>
+          <span class="node-chip" onclick="showTooltip(event,'StudentDashboard.tsx','Dashboard sinh viên — upload project, xem trạng thái phân tích')">👨‍🎓 StudentDashboard</span>
+          <span class="node-chip" onclick="showTooltip(event,'LecturerDashboard.tsx','Dashboard giảng viên — quản lý tất cả projects, review')">👩‍🏫 LecturerDashboard</span>
+          <span class="node-chip" onclick="showTooltip(event,'ProjectView.tsx','Xem chi tiết project — Knowledge Graph + Architecture Report tabs')">🔍 ProjectView</span>
+          <span class="node-chip" onclick="showTooltip(event,'ChatPage.tsx','Chat với AI về codebase sinh viên — gọi /api/projects/:id/chat')">💬 ChatPage</span>
+          <span class="node-chip" onclick="showTooltip(event,'ClassroomDashboard.tsx','Analytics toàn lớp — phân bố điểm, EWS at-risk alerts')">🏫 ClassroomDashboard</span>
+          <span class="node-chip" onclick="showTooltip(event,'KnowledgeGraph.tsx','Force-directed graph visualization — render nodes & edges từ JSON')">🕸️ KnowledgeGraph</span>
+          <span class="node-chip" onclick="showTooltip(event,'ArchitectureReport.tsx','Hiển thị báo cáo kiến trúc — score cards, layers, patterns, recommendations')">📋 ArchReport</span>
+          <span class="node-chip" onclick="showTooltip(event,'UploadZone.tsx','Drag-drop upload ZIP — validate file type, hiện tiến trình')">📤 UploadZone</span>
+          <span class="node-chip" onclick="showTooltip(event,'NavBar.tsx','Navigation bar — user role, project links')">🧭 NavBar</span>
+        </div>
+      </div>
+      <div class="layer-row layer-api" style="margin-top:3px">
+        <div class="layer-label">🔌 API Gateway<br/><small style="opacity:.6;font-size:.65rem">HTTP / Serverless</small></div>
+        <div class="layer-nodes">
+          <span class="node-chip" onclick="showTooltip(event,'frontend/src/services/api.ts','Typed fetch wrappers — tất cả backend calls có TypeScript types')">📡 api.ts</span>
+          <span class="node-chip" onclick="showTooltip(event,'api/index.js','Vercel serverless adapter — re-export Express app cho production')">⚡ api/index.js</span>
+        </div>
+      </div>
+      <div class="layer-row layer-business" style="margin-top:3px">
+        <div class="layer-label">⚙️ Business Logic<br/><small style="opacity:.6;font-size:.65rem">Express REST API</small></div>
+        <div class="layer-nodes">
+          <span class="node-chip" onclick="showTooltip(event,'backend/server.js','Express server 424 dòng — 9 endpoints: health, auth, projects CRUD, graph, report, chat, review, stats')">🖥️ server.js</span>
+          <span class="node-chip" onclick="showTooltip(event,'backend/services/analyzer.js','Core analysis engine 27KB — tích hợp understand-anything, tính điểm kiến trúc')">🔬 analyzer.js</span>
+        </div>
+      </div>
+      <div class="layer-row layer-research" style="margin-top:3px">
+        <div class="layer-label">🧪 Research Pipeline<br/><small style="opacity:.6;font-size:.65rem">Python · scikit-learn</small></div>
+        <div class="layer-nodes">
+          <span class="node-chip" onclick="showTooltip(event,'01_data_preprocessing.py','Load S19 dataset (373 SV, 201K events) → engineer 13 features/student')">📊 01_preprocess</span>
+          <span class="node-chip" onclick="showTooltip(event,'02_early_warning_system.py','Train RF/LR/GB với 5-fold CV → Random Forest AUC=0.850 trên holdout')">🚨 02_ews</span>
+          <span class="node-chip" onclick="showTooltip(event,'03_learning_trajectories.py','K-means clustering + learning curves by grade group — RQ4 analysis')">📈 03_trajectories</span>
+          <span class="node-chip" onclick="showTooltip(event,'04_summary_dashboard.py','Sinh 8 biểu đồ publication-quality + CONSOLIDATED_RESULTS.txt')">📉 04_dashboard</span>
+        </div>
+      </div>
+      <div class="layer-row layer-infra" style="margin-top:3px">
+        <div class="layer-label">🏗️ Infrastructure<br/><small style="opacity:.6;font-size:.65rem">Vercel · Vite · npm</small></div>
+        <div class="layer-nodes">
+          <span class="node-chip">📦 vercel.json</span>
+          <span class="node-chip">⚡ vite.config.ts</span>
+          <span class="node-chip">📋 backend/package.json</span>
+          <span class="node-chip">📋 frontend/package.json</span>
+        </div>
+      </div>
+      <div class="layer-row layer-docs" style="margin-top:3px">
+        <div class="layer-label">📚 Documentation<br/><small style="opacity:.6;font-size:.65rem">Markdown · LaTeX</small></div>
+        <div class="layer-nodes">
+          <span class="node-chip">📖 README.md</span>
+          <span class="node-chip" onclick="showTooltip(event,'bao_cao_do_an_KLTN.md','Báo cáo KLTN đầy đủ — 88KB, 1780 dòng, 5 chương + thực nghiệm S19')">🎓 KLTN Report (88KB)</span>
+          <span class="node-chip">📄 research_paper_DRAFT</span>
+          <span class="node-chip">📐 rubric_framework</span>
+          <span class="node-chip">🔬 experimental_design</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Research Questions -->
+<section id="rq">
+  <div class="container">
+    <div class="observe-fade">
+      <span class="section-tag">Research Questions</span>
+      <h2 class="section-title">5 câu hỏi nghiên cứu</h2>
+      <p class="section-sub">NEU-CodeLens đồng thời giải quyết 5 RQ trong một hệ thống tích hợp — lần đầu tiên trong giáo dục lập trình Việt Nam.</p>
+    </div>
+    <div class="card-grid cols2" style="margin-top:2rem">
+      <div class="rq-card observe-fade">
+        <div class="rq-num">RQ1</div>
+        <div class="rq-body">
+          <h4>LLM grading accuracy vs human experts</h4>
+          <p>Đo độ chính xác khi LLM chấm điểm so với giảng viên — Cohen's κ, Pearson r</p>
+          <span class="rq-status planned">⏳ Planned — cần API key</span>
+        </div>
+      </div>
+      <div class="rq-card observe-fade">
+        <div class="rq-num">RQ2</div>
+        <div class="rq-body">
+          <h4>Skill dimensions từ code submissions</h4>
+          <p>LLM nhận diện được các chiều kỹ năng nào từ code — 3-Tier Rubric 11 tiêu chí</p>
+          <span class="rq-status done">✅ Framework thiết kế xong</span>
+        </div>
+      </div>
+      <div class="rq-card observe-fade">
+        <div class="rq-num">RQ3</div>
+        <div class="rq-body">
+          <h4>LLM feedback cải thiện kết quả học tập?</h4>
+          <p>Quasi-experimental: Treatment (LLM feedback) vs Control — Learning Gain Hake</p>
+          <span class="rq-status planned">⏳ Planned — main study semester tới</span>
+        </div>
+      </div>
+      <div class="rq-card observe-fade">
+        <div class="rq-num">RQ4</div>
+        <div class="rq-body">
+          <h4>Mô hình quỹ đạo học tập tốt nhất</h4>
+          <p>Score convergence: tất cả nhóm đều đạt best score ≥0.94 → correctness không đủ phân biệt</p>
+          <span class="rq-status done">✅ S19 dataset — validated</span>
+        </div>
+      </div>
+      <div class="rq-card observe-fade" style="grid-column: 1 / -1">
+        <div class="rq-num">RQ5</div>
+        <div class="rq-body">
+          <h4>Phát hiện sinh viên at-risk sớm từ behavioral features</h4>
+          <p>Early Warning System: Random Forest đạt AUC=0.850 từ 13 features hành vi (engagement, persistence, compile patterns). Phát hiện được <strong>71.4%</strong> sinh viên nguy cơ thực sự.</p>
+          <span class="rq-status done">✅ AUC=0.850 — S19 validated</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Results -->
+<section id="results" class="results-section">
+  <div class="container">
+    <div class="observe-fade">
+      <span class="section-tag">Kết quả thực nghiệm — Dataset S19</span>
+      <h2 class="section-title">Early Warning System đạt AUC = 0.850</h2>
+      <p class="section-sub">Dataset CodeWorkout S19 — 373 sinh viên, 201,570 sự kiện lập trình. Holdout test set 80/20.</p>
+    </div>
+
+    <!-- EWS Metrics -->
+    <div class="card-grid cols4" style="margin-top:2.5rem">
+      <div class="metric-card auc observe-fade">
+        <div class="metric-big blue">0.850</div>
+        <div class="metric-label">AUC-ROC</div>
+        <div class="metric-model">Random Forest · holdout</div>
+      </div>
+      <div class="metric-card precision observe-fade">
+        <div class="metric-big green">71.4%</div>
+        <div class="metric-label">Precision</div>
+        <div class="metric-model">of flagged = truly at-risk</div>
+      </div>
+      <div class="metric-card recall observe-fade">
+        <div class="metric-big amber">50.0%</div>
+        <div class="metric-label">Recall</div>
+        <div class="metric-model">of at-risk detected</div>
+      </div>
+      <div class="metric-card f1 observe-fade">
+        <div class="metric-big cyan">0.588</div>
+        <div class="metric-label">F1 Score</div>
+        <div class="metric-model">precision/recall balance</div>
+      </div>
+    </div>
+
+    <!-- Feature Importance + Statistical -->
+    <div class="card-grid cols2" style="margin-top:1.5rem">
+      <div class="card observe-fade">
+        <h3 style="font-size:1rem;margin-bottom:1.25rem;font-weight:700">📊 Feature Importance (Gradient Boosting)</h3>
+        <div class="progress-row">
+          <div class="progress-header"><span class="progress-name">Run Events Count</span><span class="progress-val">0.195</span></div>
+          <div class="progress-bar"><div class="progress-fill" data-width="97.5%" style="background:linear-gradient(90deg,#6366f1,#818cf8)"></div></div>
+        </div>
+        <div class="progress-row">
+          <div class="progress-header"><span class="progress-name">Activity Span (hours)</span><span class="progress-val">0.148</span></div>
+          <div class="progress-bar"><div class="progress-fill" data-width="74%" style="background:linear-gradient(90deg,#06b6d4,#67e8f9)"></div></div>
+        </div>
+        <div class="progress-row">
+          <div class="progress-header"><span class="progress-name">Score Trend / hour</span><span class="progress-val">0.132</span></div>
+          <div class="progress-bar"><div class="progress-fill" data-width="66%" style="background:linear-gradient(90deg,#10b981,#6ee7b7)"></div></div>
+        </div>
+        <div class="progress-row">
+          <div class="progress-header"><span class="progress-name">Early Avg Score</span><span class="progress-val">0.123</span></div>
+          <div class="progress-bar"><div class="progress-fill" data-width="61.5%" style="background:linear-gradient(90deg,#a855f7,#d8b4fe)"></div></div>
+        </div>
+        <div class="progress-row">
+          <div class="progress-header"><span class="progress-name">Avg Attempts (early)</span><span class="progress-val">0.109</span></div>
+          <div class="progress-bar"><div class="progress-fill" data-width="54.5%" style="background:linear-gradient(90deg,#f59e0b,#fcd34d)"></div></div>
+        </div>
+        <div class="progress-row">
+          <div class="progress-header"><span class="progress-name">Compile Error Rate</span><span class="progress-val">0.057</span></div>
+          <div class="progress-bar"><div class="progress-fill" data-width="28.5%" style="background:linear-gradient(90deg,#ef4444,#f87171)"></div></div>
+        </div>
+      </div>
+      <div class="card observe-fade">
+        <h3 style="font-size:1rem;margin-bottom:1.25rem;font-weight:700">📈 3-Model CV Comparison (5-Fold)</h3>
+        <div style="margin-bottom:1rem;">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.25);border-radius:8px;margin-bottom:6px">
+            <span style="font-size:0.85rem;font-weight:600">🏆 Random Forest</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:#a5b4fc;font-weight:700">AUC 0.796 ± 0.061</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
+            <span style="font-size:0.85rem">Logistic Regression</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--text2)">AUC 0.772 ± 0.047</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
+            <span style="font-size:0.85rem">Gradient Boosting</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--text2)">AUC 0.759 ± 0.061</span>
+          </div>
+        </div>
+        <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:12px">
+          <p style="font-size:0.8rem;color:#fcd34d;font-weight:600;margin-bottom:4px">🔑 Key Finding (p=0.2996, ns)</p>
+          <p style="font-size:0.78rem;color:var(--text2)"><strong style="color:var(--text)">Early avg score</strong> KHÔNG có sự khác biệt có ý nghĩa thống kê giữa at-risk và non-risk. Điểm correctness đơn thuần <em>không đủ</em> → cần Tier 2 & 3!</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Grade Distribution -->
+    <div class="card observe-fade" style="margin-top:1.5rem">
+      <h3 style="font-size:1rem;margin-bottom:1.5rem;font-weight:700">🎓 Phân bố sinh viên S19 theo nhóm điểm</h3>
+      <div style="display:flex;gap:2rem;flex-wrap:wrap;align-items:flex-end;height:160px">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;min-width:80px">
+          <span style="font-size:0.78rem;color:var(--text2);font-weight:600">100</span>
+          <div style="width:100%;background:linear-gradient(180deg,#ef4444,#dc2626);border-radius:6px 6px 0 0;height:120px;display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:700;color:white">26.8%</div>
+          <span style="font-size:0.72rem;color:var(--text3);text-align:center">At-Risk<br/>&lt;0.50</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;min-width:80px">
+          <span style="font-size:0.78rem;color:var(--text2);font-weight:600">103</span>
+          <div style="width:100%;background:linear-gradient(180deg,#f59e0b,#d97706);border-radius:6px 6px 0 0;height:124px;display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:700;color:white">27.6%</div>
+          <span style="font-size:0.72rem;color:var(--text3);text-align:center">Passing<br/>0.50–0.70</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;min-width:80px">
+          <span style="font-size:0.78rem;color:var(--text2);font-weight:600">103</span>
+          <div style="width:100%;background:linear-gradient(180deg,#6366f1,#4f46e5);border-radius:6px 6px 0 0;height:124px;display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:700;color:white">27.6%</div>
+          <span style="font-size:0.72rem;color:var(--text3);text-align:center">Good<br/>0.70–0.85</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;min-width:80px">
+          <span style="font-size:0.78rem;color:var(--text2);font-weight:600">67</span>
+          <div style="width:100%;background:linear-gradient(180deg,#10b981,#059669);border-radius:6px 6px 0 0;height:80px;display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:700;color:white">18.0%</div>
+          <span style="font-size:0.72rem;color:var(--text3);text-align:center">Excellent<br/>≥0.85</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Rubric -->
+<section id="rubric">
+  <div class="container">
+    <div class="observe-fade">
+      <span class="section-tag">3-Tier Rubric Framework</span>
+      <h2 class="section-title">100 điểm · 11 tiêu chí</h2>
+      <p class="section-sub">Khung đánh giá dựa trên Bloom's Taxonomy — từ correctness cơ bản đến Computational Thinking nâng cao. Click để mở rộng.</p>
+    </div>
+    <div style="margin-top:2rem" class="observe-fade">
+      <div class="rubric-tier tier1">
+        <div class="rubric-tier-header" onclick="toggleTier(this)">
+          <div>
+            <div class="rubric-tier-title">🎯 Tier 1 — Correctness</div>
+            <div style="font-size:0.78rem;color:var(--text3);margin-top:2px">Chương trình chạy đúng không?</div>
+          </div>
+          <div class="rubric-tier-score">40 điểm</div>
+        </div>
+        <div class="rubric-criteria">
+          <div class="criteria-row"><span>1.1 Syntax & Execution — Không lỗi syntax, compile và chạy thành công</span><span class="criteria-pts">10 pts</span></div>
+          <div class="criteria-row"><span>1.2 Functional Correctness — Đúng output cho các test cases tiêu chuẩn</span><span class="criteria-pts">20 pts</span></div>
+          <div class="criteria-row"><span>1.3 Edge Case Handling — Xử lý đầu vào biên, null, empty, overflow</span><span class="criteria-pts">10 pts</span></div>
+        </div>
+      </div>
+      <div class="rubric-tier tier2">
+        <div class="rubric-tier-header" onclick="toggleTier(this)">
+          <div>
+            <div class="rubric-tier-title">✨ Tier 2 — Code Quality</div>
+            <div style="font-size:0.78rem;color:var(--text3);margin-top:2px">Code có dễ đọc, dễ maintain không?</div>
+          </div>
+          <div class="rubric-tier-score">35 điểm</div>
+        </div>
+        <div class="rubric-criteria">
+          <div class="criteria-row"><span>2.1 Naming & Readability — Tên biến/hàm meaningful, code tự giải thích</span><span class="criteria-pts">10 pts</span></div>
+          <div class="criteria-row"><span>2.2 Comments & Documentation — Docstring, inline comment đúng nơi đúng lúc</span><span class="criteria-pts">8 pts</span></div>
+          <div class="criteria-row"><span>2.3 Structure & Efficiency — Modular, không trùng lặp, độ phức tạp O hợp lý</span><span class="criteria-pts">12 pts</span></div>
+          <div class="criteria-row"><span>2.4 Idiomatic Code — Dùng đúng idiom ngôn ngữ (list comprehension, context manager...)</span><span class="criteria-pts">5 pts</span></div>
+        </div>
+      </div>
+      <div class="rubric-tier tier3">
+        <div class="rubric-tier-header" onclick="toggleTier(this)">
+          <div>
+            <div class="rubric-tier-title">🧠 Tier 3 — Computational Thinking</div>
+            <div style="font-size:0.78rem;color:var(--text3);margin-top:2px">Sinh viên TƯ DUY như thế nào? (phân tích git history)</div>
+          </div>
+          <div class="rubric-tier-score">25 điểm</div>
+        </div>
+        <div class="rubric-criteria">
+          <div class="criteria-row"><span>3.1 Problem Decomposition — Chia nhỏ bài toán thành hàm/module có ý nghĩa</span><span class="criteria-pts">8 pts</span></div>
+          <div class="criteria-row"><span>3.2 Abstraction Level — Dùng abstraction phù hợp (class, interface, generic)</span><span class="criteria-pts">7 pts</span></div>
+          <div class="criteria-row"><span>3.3 Pattern Recognition & Reuse — Nhận ra pattern, áp dụng lại, không copy-paste</span><span class="criteria-pts">5 pts</span></div>
+          <div class="criteria-row"><span>⭐ 3.4 Debugging Strategy — Phân tích git commit history: atomic commits, mô tả rõ bug đã fix</span><span class="criteria-pts">5 pts</span></div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:1rem;padding:1rem;border-radius:var(--radius-sm);background:rgba(168,85,247,0.08);border:1px solid rgba(168,85,247,0.2)" class="observe-fade">
+      <p style="font-size:0.82rem;color:#d8b4fe;font-weight:600">⭐ Novelty — Criterion 3.4 (Debugging Strategy)</p>
+      <p style="font-size:0.78rem;color:var(--text2);margin-top:4px">Tiêu chí duy nhất được đánh giá từ <strong>git revision history</strong> thay vì submission cuối cùng — phân tích commit messages, atomic commits, pattern debug. Chưa có hệ thống nào trên thế giới làm điều này bằng LLM ở quy mô lớn.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Knowledge Graph Visual -->
+<section id="graph" class="kg-section">
+  <div class="container">
+    <div class="observe-fade">
+      <span class="section-tag">Knowledge Graph</span>
+      <h2 class="section-title">30 nodes · 30 edges</h2>
+      <p class="section-sub">Đồ thị tri thức kiến trúc NEU-CodeLens — được tạo bởi understand-anything. Hover để xem thông tin node.</p>
+    </div>
+    <canvas id="kg-canvas" class="observe-fade"></canvas>
+    <div class="kg-legend observe-fade">
+      <div class="kg-legend-item"><div class="kg-dot" style="background:#818cf8"></div>Presentation (React)</div>
+      <div class="kg-legend-item"><div class="kg-dot" style="background:#67e8f9"></div>API / Gateway</div>
+      <div class="kg-legend-item"><div class="kg-dot" style="background:#fcd34d"></div>Business Logic</div>
+      <div class="kg-legend-item"><div class="kg-dot" style="background:#6ee7b7"></div>Research Pipeline</div>
+      <div class="kg-legend-item"><div class="kg-dot" style="background:#d8b4fe"></div>Infrastructure</div>
+      <div class="kg-legend-item"><div class="kg-dot" style="background:#94a3b8"></div>Documentation</div>
+    </div>
+  </div>
+</section>
+
+<!-- Architecture Analysis -->
+<section id="analysis">
+  <div class="container">
+    <div class="observe-fade">
+      <span class="section-tag">NEU Architecture Analysis</span>
+      <h2 class="section-title">Điểm kiến trúc: 82/100</h2>
+      <p class="section-sub">Phân tích theo tiêu chí KLTN NEU — phân tầng, design patterns, anti-patterns, và recommendations.</p>
+    </div>
+    <div class="card-grid cols2" style="margin-top:2.5rem">
+      <!-- Score ring -->
+      <div class="card observe-fade" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.5rem">
+        <div class="score-ring-container">
+          <div class="score-ring">
+            <svg viewBox="0 0 160 160" width="160" height="160">
+              <defs>
+                <linearGradient id="scoreGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" style="stop-color:#6366f1"/>
+                  <stop offset="100%" style="stop-color:#a855f7"/>
+                </linearGradient>
+              </defs>
+              <circle class="bg-circle" cx="80" cy="80" r="65"></circle>
+              <circle class="progress-circle" id="score-circle" cx="80" cy="80" r="65"></circle>
+            </svg>
+            <div class="score-ring-num">
+              <div class="num" id="score-num">82</div>
+              <div class="label">/ 100</div>
+            </div>
+          </div>
+          <div style="text-align:center;margin-top:0.5rem">
+            <div style="font-size:0.85rem;font-weight:700;color:var(--primary)">fullstack-spa-rest-api</div>
+            <div style="font-size:0.75rem;color:var(--text3);margin-top:2px">Architecture Pattern</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;width:100%">
+          <div style="text-align:center;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:10px">
+            <div style="font-size:1.4rem;font-weight:800;color:#818cf8">82</div>
+            <div style="font-size:0.72rem;color:var(--text3)">Architecture</div>
+          </div>
+          <div style="text-align:center;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:10px">
+            <div style="font-size:1.4rem;font-weight:800;color:#6ee7b7">75</div>
+            <div style="font-size:0.72rem;color:var(--text3)">Complexity</div>
+          </div>
+          <div style="text-align:center;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:10px">
+            <div style="font-size:1.4rem;font-weight:800;color:#fcd34d">78</div>
+            <div style="font-size:0.72rem;color:var(--text3)">Cohesion</div>
+          </div>
+          <div style="text-align:center;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:10px">
+            <div style="font-size:1.4rem;font-weight:800;color:#d8b4fe">82</div>
+            <div style="font-size:0.72rem;color:var(--text3)">Overall</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Patterns -->
+      <div class="card observe-fade">
+        <div class="tab-nav">
+          <button class="tab-btn active" onclick="switchTab(this,'patterns')">Design Patterns</button>
+          <button class="tab-btn" onclick="switchTab(this,'antipatterns')">⚠️ Anti-patterns</button>
+        </div>
+        <div id="tab-patterns" class="tab-pane active">
+          <div>
+            <span class="pattern-chip pattern-good">✓ RESTful API</span>
+            <span class="pattern-chip pattern-good">✓ Service Layer</span>
+            <span class="pattern-chip pattern-good">✓ Component-Based</span>
+            <span class="pattern-chip pattern-good">✓ Adapter/Wrapper</span>
+            <span class="pattern-chip pattern-good">✓ Async Pipeline</span>
+            <span class="pattern-chip pattern-info">◎ TypeScript Types</span>
+            <span class="pattern-chip pattern-info">◎ React Router v6</span>
+          </div>
+          <div style="margin-top:1rem;padding:1rem;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.15);border-radius:8px">
+            <p style="font-size:0.78rem;color:#6ee7b7;font-weight:600">💪 Điểm mạnh nổi bật</p>
+            <ul style="margin-top:6px;padding-left:1rem;font-size:0.78rem;color:var(--text2);line-height:1.8">
+              <li>Phân tầng Frontend / Backend / Research rõ ràng</li>
+              <li>TypeScript typed API responses ở frontend</li>
+              <li>Async analysis pipeline — upload trả về ngay</li>
+              <li>Research pipeline Python với kết quả định lượng</li>
+              <li>Documentation xuất sắc — KLTN 88KB + conference paper</li>
+            </ul>
+          </div>
+        </div>
+        <div id="tab-antipatterns" class="tab-pane">
+          <div class="antipattern-item">
+            <div><span class="severity-badge severity-warning">⚠️ WARNING</span></div>
+            <div>
+              <div class="antipattern-name">Fat Server / God File</div>
+              <div class="antipattern-desc">server.js (424 dòng) chứa database helpers + route handlers + business logic. Nên tách thành controllers/ + services/ + models/.</div>
+            </div>
+          </div>
+          <div class="antipattern-item">
+            <div><span class="severity-badge severity-warning">⚠️ WARNING</span></div>
+            <div>
+              <div class="antipattern-name">Missing Auth Guard</div>
+              <div class="antipattern-desc">JWT token tạo ra nhưng không verify ở các request sau. Endpoint /review có thể bị gọi bởi bất kỳ ai.</div>
+            </div>
+          </div>
+          <div class="antipattern-item">
+            <div><span class="severity-badge severity-info">ℹ️ INFO</span></div>
+            <div>
+              <div class="antipattern-name">File-Based Database</div>
+              <div class="antipattern-desc">JSON file (projects.json) không concurrent-safe. Ổn cho demo KLTN, không phù hợp production. Recommend: SQLite.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recommendations -->
+    <div style="margin-top:1.5rem" class="observe-fade">
+      <h3 style="font-size:1.1rem;font-weight:700;margin-bottom:1rem">📋 Recommendations từ NEU Architecture Analyzer</h3>
+      <div class="rec-item">
+        <span class="priority-badge priority-high">HIGH</span>
+        <div>
+          <div class="rec-title">Tách server.js theo Controller-Service-Model pattern</div>
+          <div class="rec-desc">Di chuyển DB helpers → models/Project.js, route handlers → controllers/, mount routes từ routes/. Code dễ test hơn.</div>
+          <div class="rec-effort">⏱ Effort: 1-2 ngày</div>
+        </div>
+      </div>
+      <div class="rec-item">
+        <span class="priority-badge priority-high">HIGH</span>
+        <div>
+          <div class="rec-title">Thêm JWT middleware authentication</div>
+          <div class="rec-desc">Tạo authMiddleware.js verify token trước các endpoint cần bảo mật. Dùng thư viện jsonwebtoken.</div>
+          <div class="rec-effort">⏱ Effort: 0.5 ngày</div>
+        </div>
+      </div>
+      <div class="rec-item">
+        <span class="priority-badge priority-medium">MED</span>
+        <div>
+          <div class="rec-title">Unit Tests cho analyzer service</div>
+          <div class="rec-desc">Viết Jest tests cho services/analyzer.js — mock understand-anything calls, test score calculation. Target: 70%+ coverage.</div>
+          <div class="rec-effort">⏱ Effort: 2-3 ngày</div>
+        </div>
+      </div>
+      <div class="rec-item">
+        <span class="priority-badge priority-medium">MED</span>
+        <div>
+          <div class="rec-title">Tích hợp Python EWS vào backend</div>
+          <div class="rec-desc">Expose Python pipeline qua Flask microservice. Backend gọi EWS predictions real-time cho ClassroomDashboard.</div>
+          <div class="rec-effort">⏱ Effort: 2-3 ngày</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NEU Reviewer Note -->
+    <div style="margin-top:1.5rem;padding:1.5rem;background:linear-gradient(135deg,rgba(99,102,241,0.08),rgba(168,85,247,0.06));border:1px solid rgba(99,102,241,0.25);border-radius:var(--radius)" class="observe-fade">
+      <p style="font-size:0.82rem;color:#a5b4fc;font-weight:700;margin-bottom:8px">🎓 Nhận xét của NEU Architecture Analyzer (dành cho Giảng viên)</p>
+      <p style="font-size:0.85rem;color:var(--text2);line-height:1.7">Đây là một KLTN xuất sắc về cả kỹ thuật lẫn nghiên cứu. Nhóm sinh viên đã xây dựng thành công hệ thống fullstack hoàn chỉnh (React + Node.js + Python) với tính năng thực tế. Điểm đặc biệt là việc tích hợp pipeline nghiên cứu ML (EWS với AUC=0.850) vào một sản phẩm phần mềm thực tế — <strong style="color:var(--text)">điều hiếm thấy ở cấp KLTN</strong>. Điểm cần cải thiện trước bảo vệ: bổ sung JWT auth, thêm unit tests, tách server.js. Về tổng thể, đề tài có tính mới cao, kết quả định lượng cụ thể, hệ thống demo được — <strong style="color:#10b981">hoàn toàn xứng đáng điểm A</strong>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Guided Tour -->
+<section id="tour" style="background:var(--bg2)">
+  <div class="container">
+    <div class="observe-fade">
+      <span class="section-tag">Guided Tour</span>
+      <h2 class="section-title">Hành trình khám phá codebase</h2>
+      <p class="section-sub">8 bước được understand-anything tự động tạo ra để giúp bạn hiểu hệ thống từ tổng quát đến chi tiết.</p>
+    </div>
+    <div style="margin-top:2.5rem" class="observe-fade">
+      <div class="tour-step">
+        <div class="tour-step-num">1</div>
+        <div class="tour-step-content">
+          <div class="tour-step-title">Bắt đầu từ README</div>
+          <div class="tour-step-desc">README.md mô tả toàn bộ hệ thống NEU-CodeLens: kiến trúc 3 tầng, các endpoint API, và hướng dẫn cài đặt.</div>
+          <div class="tour-step-nodes"><span class="tour-node-tag">document:README.md</span></div>
+        </div>
+      </div>
+      <div class="tour-step">
+        <div class="tour-step-num">2</div>
+        <div class="tour-step-content">
+          <div class="tour-step-title">Backend API Server — Trái tim hệ thống</div>
+          <div class="tour-step-desc">server.js là Express.js server với 9 API endpoints. Quan trọng nhất: POST /projects nhận ZIP, giải nén, chạy phân tích bất đồng bộ.</div>
+          <div class="tour-step-nodes"><span class="tour-node-tag">file:backend/server.js</span><span class="tour-node-tag">file:api/index.js</span></div>
+        </div>
+      </div>
+      <div class="tour-step">
+        <div class="tour-step-num">3</div>
+        <div class="tour-step-content">
+          <div class="tour-step-title">Analyzer Service — Tích hợp understand-anything</div>
+          <div class="tour-step-desc">analyzer.js (27KB) chứa logic tích hợp understand-anything pipeline — chạy full analysis trên codebase sinh viên, trả về nodes/edges/layers/scores.</div>
+          <div class="tour-step-nodes"><span class="tour-node-tag">file:backend/services/analyzer.js</span></div>
+        </div>
+      </div>
+      <div class="tour-step">
+        <div class="tour-step-num">4</div>
+        <div class="tour-step-content">
+          <div class="tour-step-title">Frontend Router — 6 Trang UI</div>
+          <div class="tour-step-desc">App.tsx định nghĩa 6 routes với React Router v6. Mỗi route tương ứng với một vai trò hoặc chức năng cụ thể.</div>
+          <div class="tour-step-nodes"><span class="tour-node-tag">file:frontend/src/App.tsx</span><span class="tour-node-tag">file:frontend/src/main.tsx</span></div>
+        </div>
+      </div>
+      <div class="tour-step">
+        <div class="tour-step-num">5</div>
+        <div class="tour-step-content">
+          <div class="tour-step-title">Knowledge Graph Visualization</div>
+          <div class="tour-step-desc">KnowledgeGraph.tsx render force-directed graph. ProjectView.tsx tích hợp cả KnowledgeGraph và ArchitectureReport trong giao diện tab.</div>
+          <div class="tour-step-nodes"><span class="tour-node-tag">file:frontend/src/components/KnowledgeGraph.tsx</span><span class="tour-node-tag">file:frontend/src/pages/ProjectView.tsx</span></div>
+        </div>
+      </div>
+      <div class="tour-step">
+        <div class="tour-step-num">6</div>
+        <div class="tour-step-content">
+          <div class="tour-step-title">Research Pipeline — Early Warning System</div>
+          <div class="tour-step-desc">Pipeline Python 4 module: trích xuất 13 features → train Random Forest (AUC=0.850) → phân tích quỹ đạo → tổng hợp báo cáo.</div>
+          <div class="tour-step-nodes"><span class="tour-node-tag">file:research/01_data_preprocessing.py</span><span class="tour-node-tag">file:research/02_early_warning_system.py</span><span class="tour-node-tag">file:research/03_learning_trajectories.py</span><span class="tour-node-tag">file:research/04_summary_dashboard.py</span></div>
+        </div>
+      </div>
+      <div class="tour-step">
+        <div class="tour-step-num">7</div>
+        <div class="tour-step-content">
+          <div class="tour-step-title">Rubric Framework — Khung đánh giá 3 tầng</div>
+          <div class="tour-step-desc">rubric_framework.md định nghĩa 100 điểm với 11 tiêu chí. Criterion 3.4 phân tích git history — novelty của đề tài.</div>
+          <div class="tour-step-nodes"><span class="tour-node-tag">file:research_docs/rubric_framework.md</span><span class="tour-node-tag">document:bao_cao_do_an_KLTN.md</span></div>
+        </div>
+      </div>
+      <div class="tour-step">
+        <div class="tour-step-num">8</div>
+        <div class="tour-step-content">
+          <div class="tour-step-title">Classroom Dashboard — Analytics toàn lớp</div>
+          <div class="tour-step-desc">ClassroomDashboard.tsx cho giảng viên xem tổng quan: phân bố điểm, sinh viên at-risk, xu hướng nộp bài — tích hợp kết quả EWS vào UI.</div>
+          <div class="tour-step-nodes"><span class="tour-node-tag">file:frontend/src/pages/ClassroomDashboard.tsx</span><span class="tour-node-tag">file:frontend/src/pages/LecturerDashboard.tsx</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <div class="footer-logo">🔍 NEU-CodeLens</div>
+  <p class="footer-sub">Hệ thống đánh giá năng lực lập trình thích ứng sử dụng LLM · Đại học Kinh tế Quốc dân · 2025–2026</p>
+  <div class="footer-links">
+    <a href="#architecture">Kiến trúc</a>
+    <a href="#results">Kết quả EWS</a>
+    <a href="#rubric">3-Tier Rubric</a>
+    <a href="#graph">Knowledge Graph</a>
+    <a href="#analysis">Phân tích</a>
+    <a href="#tour">Guided Tour</a>
+  </div>
+  <p class="footer-copy">Phân tích kiến trúc được tạo bởi <strong>understand-anything</strong> · Knowledge Graph: 30 nodes · 30 edges · 6 layers · Score: 82/100</p>
+</footer>
+
+<!-- Tooltip -->
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+// ─── Count-up animation ───────────────────────────────────────────────────────
+function animateCount(el) {
+  const target = +el.dataset.target;
+  const dur = 1800;
+  const start = performance.now();
+  function step(now) {
+    const p = Math.min((now - start) / dur, 1);
+    const ease = 1 - Math.pow(1 - p, 4);
+    el.textContent = Math.round(ease * target).toLocaleString('vi-VN');
+    if (p < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+// ─── Progress bars ────────────────────────────────────────────────────────────
+function animateProgress() {
+  document.querySelectorAll('.progress-fill[data-width]').forEach(el => {
+    el.style.width = el.dataset.width;
+  });
+}
+
+// ─── Score ring ───────────────────────────────────────────────────────────────
+function animateRing() {
+  const circle = document.getElementById('score-circle');
+  if (!circle) return;
+  const r = 65, circ = 2 * Math.PI * r;
+  const score = 82;
+  const offset = circ - (score / 100) * circ;
+  circle.style.strokeDasharray = circ;
+  setTimeout(() => { circle.style.strokeDashoffset = offset; }, 300);
+}
+
+// ─── Intersection observer ────────────────────────────────────────────────────
+const obs = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.classList.add('visible');
+      e.target.querySelectorAll('.count-up').forEach(animateCount);
+      if (e.target.querySelector('.progress-fill')) animateProgress();
+      if (e.target.querySelector('#score-circle')) animateRing();
+    }
+  });
+}, { threshold: 0.12 });
+
+document.querySelectorAll('.observe-fade').forEach(el => obs.observe(el));
+// Also observe stats-strip directly
+const strip = document.querySelector('.stats-strip');
+if (strip) obs.observe(strip);
+
+// ─── Rubric toggle ────────────────────────────────────────────────────────────
+function toggleTier(header) {
+  const criteria = header.nextElementSibling;
+  criteria.classList.toggle('open');
+}
+
+// ─── Tab switch ───────────────────────────────────────────────────────────────
+function switchTab(btn, id) {
+  const parent = btn.closest('.card');
+  parent.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  parent.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  parent.querySelector('#tab-' + id).classList.add('active');
+}
+
+// ─── Tooltip ─────────────────────────────────────────────────────────────────
+const tooltip = document.getElementById('tooltip');
+function showTooltip(e, name, desc) {
+  tooltip.innerHTML = `<strong>${name}</strong>${desc}`;
+  tooltip.classList.add('visible');
+  moveTooltip(e);
+  setTimeout(() => tooltip.classList.remove('visible'), 3000);
+}
+function moveTooltip(e) {
+  const x = e.clientX + 12, y = e.clientY + 12;
+  tooltip.style.left = Math.min(x, window.innerWidth - 280) + 'px';
+  tooltip.style.top = Math.min(y, window.innerHeight - 100) + 'px';
+}
+
+// ─── Knowledge Graph Canvas ───────────────────────────────────────────────────
+const canvas = document.getElementById('kg-canvas');
+const ctx = canvas.getContext('2d');
+
+const COLORS = {
+  presentation: '#818cf8',
+  api: '#67e8f9',
+  business: '#fcd34d',
+  research: '#6ee7b7',
+  infra: '#d8b4fe',
+  docs: '#94a3b8'
+};
+
+const nodes = [
+  // Presentation
+  {id:'main',label:'main.tsx',layer:'presentation',x:0,y:0,vx:0,vy:0,r:8},
+  {id:'app',label:'App.tsx',layer:'presentation',x:0,y:0,vx:0,vy:0,r:10},
+  {id:'landing',label:'LandingPage',layer:'presentation',x:0,y:0,vx:0,vy:0,r:9},
+  {id:'student',label:'StudentDash',layer:'presentation',x:0,y:0,vx:0,vy:0,r:9},
+  {id:'lecturer',label:'LecturerDash',layer:'presentation',x:0,y:0,vx:0,vy:0,r:9},
+  {id:'projectview',label:'ProjectView',layer:'presentation',x:0,y:0,vx:0,vy:0,r:10},
+  {id:'chat',label:'ChatPage',layer:'presentation',x:0,y:0,vx:0,vy:0,r:9},
+  {id:'classroom',label:'ClassroomDash',layer:'presentation',x:0,y:0,vx:0,vy:0,r:10},
+  {id:'kg',label:'KnowledgeGraph',layer:'presentation',x:0,y:0,vx:0,vy:0,r:10},
+  {id:'archreport',label:'ArchReport',layer:'presentation',x:0,y:0,vx:0,vy:0,r:9},
+  {id:'upload',label:'UploadZone',layer:'presentation',x:0,y:0,vx:0,vy:0,r:8},
+  {id:'navbar',label:'NavBar',layer:'presentation',x:0,y:0,vx:0,vy:0,r:7},
+  // API
+  {id:'apits',label:'api.ts',layer:'api',x:0,y:0,vx:0,vy:0,r:10},
+  {id:'apiindex',label:'api/index.js',layer:'api',x:0,y:0,vx:0,vy:0,r:8},
+  // Business
+  {id:'server',label:'server.js',layer:'business',x:0,y:0,vx:0,vy:0,r:14},
+  {id:'analyzer',label:'analyzer.js',layer:'business',x:0,y:0,vx:0,vy:0,r:12},
+  // Research
+  {id:'pre',label:'01_preprocess',layer:'research',x:0,y:0,vx:0,vy:0,r:9},
+  {id:'ews',label:'02_ews',layer:'research',x:0,y:0,vx:0,vy:0,r:11},
+  {id:'traj',label:'03_trajectories',layer:'research',x:0,y:0,vx:0,vy:0,r:9},
+  {id:'dash',label:'04_dashboard',layer:'research',x:0,y:0,vx:0,vy:0,r:9},
+  // Infra
+  {id:'vercel',label:'vercel.json',layer:'infra',x:0,y:0,vx:0,vy:0,r:7},
+  {id:'vite',label:'vite.config',layer:'infra',x:0,y:0,vx:0,vy:0,r:7},
+  // Docs
+  {id:'readme',label:'README.md',layer:'docs',x:0,y:0,vx:0,vy:0,r:8},
+  {id:'kltn',label:'KLTN Report',layer:'docs',x:0,y:0,vx:0,vy:0,r:11},
+  {id:'paper',label:'Paper Draft',layer:'docs',x:0,y:0,vx:0,vy:0,r:9},
+  {id:'rubric',label:'rubric_framework',layer:'docs',x:0,y:0,vx:0,vy:0,r:9},
+];
+
+const edges = [
+  {s:'main',t:'app'},{s:'app',t:'landing'},{s:'app',t:'student'},{s:'app',t:'lecturer'},
+  {s:'app',t:'projectview'},{s:'app',t:'chat'},{s:'app',t:'classroom'},
+  {s:'projectview',t:'kg'},{s:'projectview',t:'archreport'},
+  {s:'student',t:'upload'},{s:'landing',t:'apits'},{s:'student',t:'apits'},
+  {s:'lecturer',t:'apits'},{s:'projectview',t:'apits'},{s:'chat',t:'apits'},
+  {s:'apits',t:'server'},{s:'apiindex',t:'server'},
+  {s:'server',t:'analyzer'},
+  {s:'pre',t:'ews'},{s:'ews',t:'dash'},{s:'traj',t:'dash'},
+  {s:'vercel',t:'apiindex'},{s:'vite',t:'main'},
+  {s:'readme',t:'server'},{s:'kltn',t:'rubric'},{s:'paper',t:'ews'},
+  {s:'rubric',t:'analyzer'},
+];
+
+// Random init
+const W = () => canvas.width, H = () => canvas.height;
+function initPositions() {
+  nodes.forEach((n,i) => {
+    n.x = 80 + Math.random() * (W() - 160);
+    n.y = 80 + Math.random() * (H() - 160);
+  });
+}
+
+let hoveredNode = null;
+let dragging = null, dragOffX = 0, dragOffY = 0;
+let panX = 0, panY = 0, isPanning = false, panStartX = 0, panStartY = 0;
+
+function resizeCanvas() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width;
+  canvas.height = 500;
+  initPositions();
+}
+
+// Force simulation
+function simulate() {
+  const k = 80, rep = 3500, damp = 0.88, dt = 0.55;
+  nodes.forEach(n => {
+    if (n === dragging) return;
+    let fx = 0, fy = 0;
+    // Repulsion
+    nodes.forEach(m => {
+      if (m === n) return;
+      const dx = n.x - m.x, dy = n.y - m.y;
+      const d = Math.max(Math.sqrt(dx*dx+dy*dy), 1);
+      fx += (dx/d) * rep / (d*d);
+      fy += (dy/d) * rep / (d*d);
+    });
+    // Springs
+    edges.forEach(e => {
+      const other = e.s===n.id ? nodes.find(x=>x.id===e.t) : e.t===n.id ? nodes.find(x=>x.id===e.s) : null;
+      if (!other) return;
+      const dx = other.x-n.x, dy = other.y-n.y;
+      const d = Math.sqrt(dx*dx+dy*dy)||1;
+      fx += (dx/d)*(d-k)*0.3;
+      fy += (dy/d)*(d-k)*0.3;
+    });
+    // Center gravity
+    fx += (W()/2-n.x)*0.02;
+    fy += (H()/2-n.y)*0.02;
+    n.vx = (n.vx + fx*dt) * damp;
+    n.vy = (n.vy + fy*dt) * damp;
+    n.x = Math.max(n.r+4, Math.min(W()-n.r-4, n.x+n.vx*dt));
+    n.y = Math.max(n.r+4, Math.min(H()-n.r-4, n.y+n.vy*dt));
+  });
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W(), H());
+  // Edges
+  edges.forEach(e => {
+    const s = nodes.find(n=>n.id===e.s), t = nodes.find(n=>n.id===e.t);
+    if (!s||!t) return;
+    const isHov = hoveredNode&&(hoveredNode.id===e.s||hoveredNode.id===e.t);
+    ctx.beginPath();
+    ctx.moveTo(s.x, s.y);
+    ctx.lineTo(t.x, t.y);
+    ctx.strokeStyle = isHov ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = isHov ? 1.5 : 0.8;
+    ctx.stroke();
+    // Arrow
+    if (isHov) {
+      const angle = Math.atan2(t.y-s.y, t.x-s.x);
+      const mx = (s.x+t.x)/2, my = (s.y+t.y)/2;
+      ctx.beginPath();
+      ctx.moveTo(mx, my);
+      ctx.lineTo(mx-7*Math.cos(angle-0.4), my-7*Math.sin(angle-0.4));
+      ctx.lineTo(mx-7*Math.cos(angle+0.4), my-7*Math.sin(angle+0.4));
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.fill();
+    }
+  });
+  // Nodes
+  nodes.forEach(n => {
+    const col = COLORS[n.layer];
+    const isHov = hoveredNode===n;
+    const r = isHov ? n.r+3 : n.r;
+    // Glow
+    if (isHov) {
+      const g = ctx.createRadialGradient(n.x,n.y,0,n.x,n.y,r*2.5);
+      g.addColorStop(0, col+'55'); g.addColorStop(1, col+'00');
+      ctx.beginPath(); ctx.arc(n.x,n.y,r*2.5,0,Math.PI*2);
+      ctx.fillStyle=g; ctx.fill();
+    }
+    // Circle
+    ctx.beginPath(); ctx.arc(n.x,n.y,r,0,Math.PI*2);
+    const grad = ctx.createRadialGradient(n.x-r*0.3,n.y-r*0.3,0,n.x,n.y,r);
+    grad.addColorStop(0,col+'ff'); grad.addColorStop(1,col+'99');
+    ctx.fillStyle = grad; ctx.fill();
+    ctx.strokeStyle = isHov ? 'white' : col+'cc';
+    ctx.lineWidth = isHov ? 2 : 1; ctx.stroke();
+    // Label
+    if (isHov || n.r>=10) {
+      ctx.fillStyle = isHov ? 'white' : 'rgba(255,255,255,0.75)';
+      ctx.font = `${isHov?600:500} ${isHov?11:9}px Inter,sans-serif`;
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(n.label, n.x, n.y+(r+10));
+    }
+  });
+}
+
+function loop() {
+  for(let i=0;i<3;i++) simulate();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function nodeAt(x,y) {
+  return nodes.find(n=>Math.hypot(n.x-x,n.y-y)<=n.r+4)||null;
+}
+
+canvas.addEventListener('mousemove', e => {
+  const r=canvas.getBoundingClientRect();
+  const x=e.clientX-r.left, y=e.clientY-r.top;
+  if (dragging) { dragging.x=x+dragOffX; dragging.y=y+dragOffY; return; }
+  hoveredNode = nodeAt(x,y);
+  canvas.style.cursor = hoveredNode?'pointer':'grab';
+});
+canvas.addEventListener('mousedown', e => {
+  const r=canvas.getBoundingClientRect();
+  const x=e.clientX-r.left, y=e.clientY-r.top;
+  dragging = nodeAt(x,y);
+  if (dragging) { dragOffX=dragging.x-x; dragOffY=dragging.y-y; canvas.style.cursor='grabbing'; }
+});
+canvas.addEventListener('mouseup', ()=>{ dragging=null; canvas.style.cursor='grab'; });
+canvas.addEventListener('mouseleave', ()=>{ hoveredNode=null; dragging=null; });
+
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+loop();
+</script>
+</body>
+</html>

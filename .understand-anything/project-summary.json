@@ -1,0 +1,52 @@
+{
+  "projectName": "NEU-CodeLens",
+  "version": "2.0.0",
+  "languages": ["TypeScript", "JavaScript", "Python"],
+  "frameworks": ["React", "Vite", "Express", "Node.js", "scikit-learn", "pandas", "matplotlib"],
+  "buildTool": "npm + pip",
+  "hasTests": false,
+  "hasDocs": true,
+  "hasCI": false,
+  "estimatedSize": "large",
+  "architecturePattern": "fullstack-spa-api",
+  "databaseType": "json-file (projects.json)",
+  "mainEntryPoints": [
+    "backend/server.js",
+    "frontend/src/main.tsx",
+    "api/index.js",
+    "research/01_data_preprocessing.py"
+  ],
+  "neuNotes": "Đây là hệ thống KLTN xuất sắc của nhóm sinh viên NEU — tích hợp đầy đủ 3 thành phần: (1) Frontend React/TypeScript với 6 trang UI hoàn chỉnh (LandingPage, StudentDashboard, LecturerDashboard, ProjectView, ChatPage, ClassroomDashboard), (2) Backend Express.js với REST API đầy đủ cho upload, phân tích và review dự án, (3) Pipeline nghiên cứu Python (Early Warning System với Random Forest AUC=0.850, phân tích quỹ đạo học tập). Hệ thống tích hợp understand-anything plugin để phân tích kiến trúc code sinh viên. Điểm mạnh: phân tầng rõ ràng Frontend/Backend/Research, UI đẹp. Điểm cần cải thiện: thiếu unit tests, chưa có CI/CD, database dùng JSON file chưa scale được.",
+  "keyInsights": {
+    "frontend": {
+      "framework": "React 18 + Vite + TypeScript",
+      "pages": ["LandingPage", "StudentDashboard", "LecturerDashboard", "ProjectView", "ChatPage", "ClassroomDashboard"],
+      "components": ["KnowledgeGraph", "ArchitectureReport", "UploadZone", "NavBar"],
+      "stateManagement": "local useState/useEffect",
+      "routing": "react-router-dom v6"
+    },
+    "backend": {
+      "framework": "Express.js + ES Modules",
+      "apiRoutes": [
+        "GET /api/health",
+        "POST /api/auth/login",
+        "GET /api/projects",
+        "GET /api/projects/:id",
+        "POST /api/projects (upload zip)",
+        "GET /api/projects/:id/graph",
+        "GET /api/projects/:id/report",
+        "POST /api/projects/:id/chat",
+        "POST /api/projects/:id/review",
+        "GET /api/stats"
+      ],
+      "storage": "JSON file (data/projects.json)",
+      "fileUpload": "multer (200MB limit, ZIP only)",
+      "codeAnalysis": "understand-anything pipeline via services/analyzer.js"
+    },
+    "research": {
+      "dataset": "S19_All_Release_2_10_22 (CodeWorkout, n=373)",
+      "models": ["Logistic Regression", "Random Forest (AUC=0.850)", "Gradient Boosting"],
+      "findings": "Correctness score alone is NOT discriminative (p=0.30) for at-risk detection"
+    }
+  }
+}

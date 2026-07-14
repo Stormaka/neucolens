@@ -1,0 +1,16 @@
+{
+  "lastAnalyzedAt": "2026-06-20T14:20:00Z",
+  "gitCommitHash": "3c0b36a4b21f6eb737aa333b3e62cde28eddca3b",
+  "version": "1.0.0",
+  "analyzedFiles": 30,
+  "tool": "NEU-CodeLens understand-anything integration",
+  "stats": {
+    "totalNodes": 30,
+    "totalEdges": 30,
+    "totalLayers": 6,
+    "tourSteps": 8,
+    "overallScore": 82,
+    "languages": ["TypeScript", "JavaScript", "Python", "Markdown"],
+    "frameworks": ["React", "Vite", "Express", "scikit-learn", "pandas"]
+  }
+}

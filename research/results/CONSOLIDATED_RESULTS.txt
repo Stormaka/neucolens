@@ -1,0 +1,122 @@
+
+================================================================================
+NEU-CODELENS RESEARCH — CONSOLIDATED RESULTS REPORT
+================================================================================
+Dataset   : S19_All_Release_2_10_22 (CodeWorkout, Spring 2019)
+Language  : Java 8 (platform: CodeWorkout)
+Students  : 373 (with final grades)  |  At-risk: 100 (26.8%)
+Assignments: 5 (A1 Basics → A5 OOP)
+Generated : June 2026
+================================================================================
+
+SECTION 1 – DATASET OVERVIEW
+──────────────────────────────────────────────────────────────────────────────
+Total events recorded    : 201,570
+Code snapshots (unique)  : 1,284,268
+Students with full data  : 373
+Final grade mean         : 0.623   |   std: 0.230
+Grade range              : 0.000 – 0.980
+
+Grade Group Distribution:
+  At-Risk    (0.00–0.50): 100 students  (26.8%)
+  Passing    (0.50–0.70): 103 students  (27.6%)
+  Good       (0.70–0.85): 103 students  (27.6%)
+  Excellent  (0.85–1.00):  67 students  (18.0%)
+
+================================================================================
+SECTION 2 – RQ5: EARLY WARNING SYSTEM RESULTS
+──────────────────────────────────────────────────────────────────────────────
+Features used: 13
+  n_total_events, n_compile_errors, n_run_events, compile_error_rate, compile_success_rate, early_avg_score, score_trend_per_hour, session_count, activity_span_hours, unique_problems, n_early_problems, avg_attempts_early, max_attempts_early
+
+5-Fold Stratified Cross-Validation:
+  Model                AUC-ROC   F1      Precision  Recall
+  ─────────────────────────────────────────────────────────
+  Logistic Regression  0.772     0.543   0.474      0.640
+  Random Forest        0.796     0.542   0.643      0.480
+  Gradient Boosting    0.759     0.492   0.565      0.450
+
+Best Model: Random Forest (AUC = 0.796 ± 0.061)
+
+Holdout Test Set Performance (80/20 split):
+  AUC-ROC   : 0.850
+  Precision : 0.714  (of students flagged as at-risk, 71% truly at-risk)
+  Recall    : 0.500  (of truly at-risk students, 50% correctly identified)
+  F1 Score  : 0.588
+
+Key Finding (RQ5):
+  Behavioral and engagement features from early submissions can predict
+  at-risk students with AUC=0.796 BEFORE the course ends.
+  Top predictors: run_events, activity_span, early_avg_score, score_trend.
+
+================================================================================
+SECTION 3 – STATISTICAL FEATURE COMPARISON (At-Risk vs Not-At-Risk)
+──────────────────────────────────────────────────────────────────────────────
+Feature                  Not-At-Risk    At-Risk    p-value   Significance
+─────────────────────────────────────────────────────────────────────────
+  early_avg_score              0.487       0.461    0.2996    ns
+  compile_error_rate           0.278       0.327    0.0002    ***
+  avg_attempts_early           4.823       3.719    0.0002    ***
+  n_run_events               202.645     112.470    0.0000    ***
+
+================================================================================
+SECTION 4 – RQ4: LEARNING TRAJECTORY ANALYSIS
+──────────────────────────────────────────────────────────────────────────────
+Assignment progression: A1 Basics → A2 Control Flow → A3 Arrays → A4 Methods → A5 OOP
+
+Mean Best Score per Assignment (all students):
+  A1 Basics           : mean=0.977  std=0.144  n=349
+  A2 Control Flow     : mean=0.987  std=0.101  n=322
+  A3 Arrays           : mean=0.988  std=0.087  n=342
+  A4 Methods          : mean=0.997  std=0.057  n=308
+  A5 OOP              : mean=0.994  std=0.055  n=306
+
+Grade Group Trajectory:
+  At-Risk      n=100  final_grade=0.298  A1=0.940  A5=1.000  delta=+0.060
+  Passing      n=103  final_grade=0.606  A1=0.995  A5=0.987  delta=-0.009
+  Good         n=103  final_grade=0.778  A1=0.980  A5=0.993  delta=+0.013
+  Excellent    n= 67  final_grade=0.898  A1=1.000  A5=1.000  delta=+0.000
+
+Key Finding (RQ4):
+  All grade groups achieve high best-scores (>0.94) due to platform's
+  hint system and unlimited retries. This suggests that final correctness
+  scores alone are insufficient to differentiate skill levels — supporting
+  the need for a process-based evaluation system (NEU-CodeLens approach).
+  The at-risk group (grade<0.5) shows higher variance in early assignments,
+  indicating earlier divergence is detectable.
+
+================================================================================
+SECTION 5 – IMPLICATIONS FOR NEU-CODELENS DESIGN
+──────────────────────────────────────────────────────────────────────────────
+1. SCORE INFLATION: The dataset shows score convergence (all groups near 1.0
+   by A3). This VALIDATES the need for process-oriented rubrics (Tiers 2 & 3)
+   beyond just correctness — exactly what NEU-CodeLens proposes.
+
+2. ENGAGEMENT MATTERS: The top EWS features are engagement-based (run_events,
+   activity_span), not just score-based. This supports the git revision history
+   analysis in Tier 3 of the rubric (Criterion 3.4: Debugging Strategy).
+
+3. EARLY DETECTION FEASIBLE: AUC=0.796 from behavioral data alone (without
+   code quality analysis). NEU-CodeLens adding LLM code features to EWS
+   is expected to push AUC above 0.85 (our target).
+
+4. DATASET LIMITATION: Java vs Python, US university vs Vietnamese context.
+   Results serve as methodology validation; main study will use Python/NEU data.
+
+================================================================================
+FIGURES GENERATED
+──────────────────────────────────────────────────────────────────────────────
+1. summary_dashboard.png       — Grand summary: all 5 panels
+2. statistical_comparison.png  — Violin plots with Mann-Whitney p-values
+3. ews_detailed.png            — Confusion matrix + ROC + threshold analysis
+4. ews_evaluation.png          — Original EWS evaluation (3 models)
+5. ews_profiles.png            — Grade & error rate histograms
+6. trajectory_learning_curves.png — Learning curves by group
+7. trajectory_distributions.png   — Heatmap + boxplots
+8. trajectory_individual.png       — Individual trajectories per cluster
+
+All figures: C:/Users/Acer/Downloads/neu-codelens/research/results/figures/
+
+================================================================================
+STATUS: READY TO INCORPORATE INTO THESIS REPORT (Chapter 5)
+================================================================================

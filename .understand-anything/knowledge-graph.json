@@ -1,0 +1,444 @@
+{
+  "version": "1.0.0",
+  "project": {
+    "name": "NEU-CodeLens",
+    "languages": ["TypeScript", "JavaScript", "Python", "Markdown"],
+    "frameworks": ["React", "Vite", "Express", "scikit-learn", "pandas"],
+    "description": "Hệ thống đánh giá năng lực lập trình thích ứng sử dụng Mô hình Ngôn ngữ Lớn — LLM-Assisted Adaptive Assessment System for Introductory Programming Education at NEU Vietnam",
+    "analyzedAt": "2026-06-20T14:15:00Z",
+    "gitCommitHash": "3c0b36a4b21f6eb737aa333b3e62cde28eddca3b"
+  },
+  "nodes": [
+    {
+      "id": "file:frontend/src/main.tsx",
+      "type": "file",
+      "name": "main.tsx",
+      "filePath": "frontend/src/main.tsx",
+      "summary": "React application entry point — mounts App into DOM root element",
+      "tags": ["entry-point", "react", "typescript"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:frontend/src/App.tsx",
+      "type": "file",
+      "name": "App.tsx",
+      "filePath": "frontend/src/App.tsx",
+      "summary": "Root router component — defines 6 routes: /, /student, /lecturer, /project/:id, /chat/:id, /classroom",
+      "tags": ["router", "react", "typescript", "core"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:frontend/src/pages/LandingPage.tsx",
+      "type": "file",
+      "name": "LandingPage.tsx",
+      "filePath": "frontend/src/pages/LandingPage.tsx",
+      "summary": "Landing page with login form for students and lecturers — handles role-based redirect",
+      "tags": ["page", "auth", "ui", "react"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/pages/StudentDashboard.tsx",
+      "type": "file",
+      "name": "StudentDashboard.tsx",
+      "filePath": "frontend/src/pages/StudentDashboard.tsx",
+      "summary": "Student view — shows list of submitted projects, upload form, project status cards",
+      "tags": ["page", "student", "dashboard", "react"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/pages/LecturerDashboard.tsx",
+      "type": "file",
+      "name": "LecturerDashboard.tsx",
+      "filePath": "frontend/src/pages/LecturerDashboard.tsx",
+      "summary": "Lecturer view — lists all student projects with scores, review buttons, stats overview",
+      "tags": ["page", "lecturer", "dashboard", "react"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/pages/ProjectView.tsx",
+      "type": "file",
+      "name": "ProjectView.tsx",
+      "filePath": "frontend/src/pages/ProjectView.tsx",
+      "summary": "Project detail page — tabs for Knowledge Graph visualization, Architecture Report, and raw metrics",
+      "tags": ["page", "project", "visualization", "react"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:frontend/src/pages/ChatPage.tsx",
+      "type": "file",
+      "name": "ChatPage.tsx",
+      "filePath": "frontend/src/pages/ChatPage.tsx",
+      "summary": "Chat interface for Q&A about a specific project's codebase — calls /api/projects/:id/chat",
+      "tags": ["page", "chat", "llm", "react"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:frontend/src/pages/ClassroomDashboard.tsx",
+      "type": "file",
+      "name": "ClassroomDashboard.tsx",
+      "filePath": "frontend/src/pages/ClassroomDashboard.tsx",
+      "summary": "Classroom analytics view — aggregate statistics, grade distribution charts, at-risk alerts for all students",
+      "tags": ["page", "analytics", "classroom", "ews", "react"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:frontend/src/components/KnowledgeGraph.tsx",
+      "type": "file",
+      "name": "KnowledgeGraph.tsx",
+      "filePath": "frontend/src/components/KnowledgeGraph.tsx",
+      "summary": "Interactive force-directed knowledge graph visualization component — renders nodes and edges from graph JSON",
+      "tags": ["component", "visualization", "graph", "react"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:frontend/src/components/ArchitectureReport.tsx",
+      "type": "file",
+      "name": "ArchitectureReport.tsx",
+      "filePath": "frontend/src/components/ArchitectureReport.tsx",
+      "summary": "Architecture analysis report component — displays score cards, layer breakdown, patterns, anti-patterns, recommendations",
+      "tags": ["component", "report", "architecture", "react"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:frontend/src/components/UploadZone.tsx",
+      "type": "file",
+      "name": "UploadZone.tsx",
+      "filePath": "frontend/src/components/UploadZone.tsx",
+      "summary": "Drag-and-drop file upload zone for ZIP files — shows progress, validates file type",
+      "tags": ["component", "upload", "ui", "react"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/components/NavBar.tsx",
+      "type": "file",
+      "name": "NavBar.tsx",
+      "filePath": "frontend/src/components/NavBar.tsx",
+      "summary": "Navigation bar — shows user role, project name, links to dashboards",
+      "tags": ["component", "navigation", "ui", "react"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:frontend/src/services/api.ts",
+      "type": "file",
+      "name": "api.ts",
+      "filePath": "frontend/src/services/api.ts",
+      "summary": "API client service — typed fetch wrappers for all backend endpoints (projects, graph, report, chat, stats)",
+      "tags": ["service", "api-client", "typescript", "http"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/server.js",
+      "type": "file",
+      "name": "server.js",
+      "filePath": "backend/server.js",
+      "summary": "Express.js REST API server — handles project upload, async analysis pipeline, project CRUD, chat endpoint, stats",
+      "tags": ["server", "api", "express", "core", "javascript"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:backend/services/analyzer.js",
+      "type": "file",
+      "name": "analyzer.js",
+      "filePath": "backend/services/analyzer.js",
+      "summary": "Core analysis engine — invokes understand-anything pipeline on uploaded project ZIP, extracts nodes/edges/layers/scores",
+      "tags": ["service", "analyzer", "understand-anything", "core", "javascript"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:api/index.js",
+      "type": "file",
+      "name": "index.js",
+      "filePath": "api/index.js",
+      "summary": "Vercel serverless function entry point — re-exports Express app for production deployment",
+      "tags": ["serverless", "vercel", "deployment", "javascript"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:research/01_data_preprocessing.py",
+      "type": "file",
+      "name": "01_data_preprocessing.py",
+      "filePath": "research/01_data_preprocessing.py",
+      "summary": "Data preprocessing pipeline — loads S19 CodeWorkout dataset (373 students, 201K events), engineers 13 behavioral features per student",
+      "tags": ["research", "data-processing", "python", "pandas", "ews"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:research/02_early_warning_system.py",
+      "type": "file",
+      "name": "02_early_warning_system.py",
+      "filePath": "research/02_early_warning_system.py",
+      "summary": "Early Warning System ML pipeline — trains Logistic Regression, Random Forest (AUC=0.850), Gradient Boosting with 5-fold CV for at-risk student detection",
+      "tags": ["research", "ml", "ews", "random-forest", "python", "scikit-learn"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:research/03_learning_trajectories.py",
+      "type": "file",
+      "name": "03_learning_trajectories.py",
+      "filePath": "research/03_learning_trajectories.py",
+      "summary": "Learning trajectory analysis — K-means clustering, learning curve visualization by grade group, RQ4 charts",
+      "tags": ["research", "ml", "clustering", "visualization", "python"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:research/04_summary_dashboard.py",
+      "type": "file",
+      "name": "04_summary_dashboard.py",
+      "filePath": "research/04_summary_dashboard.py",
+      "summary": "Summary dashboard generation — produces 8 publication-quality matplotlib figures and CONSOLIDATED_RESULTS.txt report",
+      "tags": ["research", "visualization", "dashboard", "python", "matplotlib"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:research_docs/rubric_framework.md",
+      "type": "document",
+      "name": "rubric_framework.md",
+      "filePath": "research_docs/rubric_framework.md",
+      "summary": "3-Tier Rubric Framework — 11 criteria, 100 points: Tier1 Correctness (40pt), Tier2 Code Quality (35pt), Tier3 Computational Thinking (25pt)",
+      "tags": ["docs", "rubric", "framework", "assessment"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:research_docs/experimental_design.md",
+      "type": "document",
+      "name": "experimental_design.md",
+      "filePath": "research_docs/experimental_design.md",
+      "summary": "Quasi-experimental research design — 2 classes (~80 students), 15 weeks, Control vs Treatment with LLM feedback",
+      "tags": ["docs", "research-design", "quasi-experimental"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:research_docs/research_proposal.md",
+      "type": "document",
+      "name": "research_proposal.md",
+      "filePath": "research_docs/research_proposal.md",
+      "summary": "Full research proposal — 5 RQs, literature review gaps, NEU-CodeLens novelty claims",
+      "tags": ["docs", "research-proposal", "rq"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:README.md",
+      "type": "document",
+      "name": "README.md",
+      "filePath": "README.md",
+      "summary": "Project README — system overview, architecture diagram, setup instructions, API documentation",
+      "tags": ["docs", "readme", "entry-point"],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:bao_cao_do_an_KLTN.md",
+      "type": "document",
+      "name": "bao_cao_do_an_KLTN.md",
+      "filePath": "bao_cao_do_an_KLTN.md",
+      "summary": "Báo cáo Khóa luận tốt nghiệp đầy đủ — 88KB, 1780 dòng, 5 chương + kết quả thực nghiệm S19 dataset",
+      "tags": ["docs", "thesis", "kltn", "vietnamese"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:research_paper_DRAFT.md",
+      "type": "document",
+      "name": "research_paper_DRAFT.md",
+      "filePath": "research_paper_DRAFT.md",
+      "summary": "Academic conference paper draft (English) — 7 sections, preliminary results, target SIGCSE 2027 / EDM 2027",
+      "tags": ["docs", "paper", "research", "english"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "config:backend/package.json",
+      "type": "config",
+      "name": "backend/package.json",
+      "filePath": "backend/package.json",
+      "summary": "Backend Node.js dependencies — express, cors, multer, adm-zip, type:module",
+      "tags": ["config", "npm", "dependencies"],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:frontend/package.json",
+      "type": "config",
+      "name": "frontend/package.json",
+      "filePath": "frontend/package.json",
+      "summary": "Frontend Vite+React+TypeScript dependencies — react-router-dom, tailwindcss, react-force-graph",
+      "tags": ["config", "npm", "dependencies", "frontend"],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:vercel.json",
+      "type": "config",
+      "name": "vercel.json",
+      "filePath": "vercel.json",
+      "summary": "Vercel deployment configuration — routes /api/* to Node.js serverless function",
+      "tags": ["config", "deployment", "vercel"],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:frontend/vite.config.ts",
+      "type": "config",
+      "name": "vite.config.ts",
+      "filePath": "frontend/vite.config.ts",
+      "summary": "Vite build configuration — React plugin, proxy /api to localhost:3001 in development",
+      "tags": ["config", "build", "vite", "dev-proxy"],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    { "source": "file:frontend/src/main.tsx", "target": "file:frontend/src/App.tsx", "type": "imports", "label": "mounts" },
+    { "source": "file:frontend/src/App.tsx", "target": "file:frontend/src/pages/LandingPage.tsx", "type": "imports", "label": "route /" },
+    { "source": "file:frontend/src/App.tsx", "target": "file:frontend/src/pages/StudentDashboard.tsx", "type": "imports", "label": "route /student" },
+    { "source": "file:frontend/src/App.tsx", "target": "file:frontend/src/pages/LecturerDashboard.tsx", "type": "imports", "label": "route /lecturer" },
+    { "source": "file:frontend/src/App.tsx", "target": "file:frontend/src/pages/ProjectView.tsx", "type": "imports", "label": "route /project/:id" },
+    { "source": "file:frontend/src/App.tsx", "target": "file:frontend/src/pages/ChatPage.tsx", "type": "imports", "label": "route /chat/:id" },
+    { "source": "file:frontend/src/App.tsx", "target": "file:frontend/src/pages/ClassroomDashboard.tsx", "type": "imports", "label": "route /classroom" },
+    { "source": "file:frontend/src/pages/ProjectView.tsx", "target": "file:frontend/src/components/KnowledgeGraph.tsx", "type": "imports", "label": "renders" },
+    { "source": "file:frontend/src/pages/ProjectView.tsx", "target": "file:frontend/src/components/ArchitectureReport.tsx", "type": "imports", "label": "renders" },
+    { "source": "file:frontend/src/pages/StudentDashboard.tsx", "target": "file:frontend/src/components/UploadZone.tsx", "type": "imports", "label": "uses" },
+    { "source": "file:frontend/src/pages/LandingPage.tsx", "target": "file:frontend/src/services/api.ts", "type": "imports", "label": "calls login" },
+    { "source": "file:frontend/src/pages/StudentDashboard.tsx", "target": "file:frontend/src/services/api.ts", "type": "imports", "label": "calls projects API" },
+    { "source": "file:frontend/src/pages/LecturerDashboard.tsx", "target": "file:frontend/src/services/api.ts", "type": "imports", "label": "calls projects + stats" },
+    { "source": "file:frontend/src/pages/ProjectView.tsx", "target": "file:frontend/src/services/api.ts", "type": "imports", "label": "calls graph + report" },
+    { "source": "file:frontend/src/pages/ChatPage.tsx", "target": "file:frontend/src/services/api.ts", "type": "imports", "label": "calls chat API" },
+    { "source": "file:frontend/src/services/api.ts", "target": "file:backend/server.js", "type": "calls", "label": "HTTP fetch /api/*" },
+    { "source": "file:api/index.js", "target": "file:backend/server.js", "type": "imports", "label": "re-exports app" },
+    { "source": "file:backend/server.js", "target": "file:backend/services/analyzer.js", "type": "imports", "label": "calls analyzeProject()" },
+    { "source": "file:research/01_data_preprocessing.py", "target": "file:research/02_early_warning_system.py", "type": "calls", "label": "outputs features_dataset.csv" },
+    { "source": "file:research/02_early_warning_system.py", "target": "file:research/03_learning_trajectories.py", "type": "calls", "label": "parallel pipeline step" },
+    { "source": "file:research/02_early_warning_system.py", "target": "file:research/04_summary_dashboard.py", "type": "calls", "label": "EWS results → dashboard" },
+    { "source": "file:research/03_learning_trajectories.py", "target": "file:research/04_summary_dashboard.py", "type": "calls", "label": "trajectory results → dashboard" },
+    { "source": "config:vercel.json", "target": "file:api/index.js", "type": "configures", "label": "routes /api → serverless" },
+    { "source": "config:frontend/vite.config.ts", "target": "file:frontend/src/main.tsx", "type": "configures", "label": "dev server + proxy" },
+    { "source": "document:README.md", "target": "file:backend/server.js", "type": "documents", "label": "API reference" },
+    { "source": "document:bao_cao_do_an_KLTN.md", "target": "file:research_docs/rubric_framework.md", "type": "documents", "label": "Chapter 3 rubric" },
+    { "source": "document:research_paper_DRAFT.md", "target": "file:research/02_early_warning_system.py", "type": "documents", "label": "reports EWS results" },
+    { "source": "file:research_docs/rubric_framework.md", "target": "file:backend/services/analyzer.js", "type": "documents", "label": "rubric implemented in analyzer" },
+    { "source": "config:backend/package.json", "target": "file:backend/server.js", "type": "configures", "label": "deps + scripts" },
+    { "source": "config:frontend/package.json", "target": "file:frontend/src/main.tsx", "type": "configures", "label": "deps + build" }
+  ],
+  "layers": [
+    {
+      "id": "layer:presentation",
+      "name": "Presentation Layer",
+      "description": "React frontend — tất cả pages, components, và styling. Giao diện người dùng dành cho sinh viên, giảng viên và quản trị lớp học.",
+      "nodeIds": [
+        "file:frontend/src/main.tsx",
+        "file:frontend/src/App.tsx",
+        "file:frontend/src/pages/LandingPage.tsx",
+        "file:frontend/src/pages/StudentDashboard.tsx",
+        "file:frontend/src/pages/LecturerDashboard.tsx",
+        "file:frontend/src/pages/ProjectView.tsx",
+        "file:frontend/src/pages/ChatPage.tsx",
+        "file:frontend/src/pages/ClassroomDashboard.tsx",
+        "file:frontend/src/components/KnowledgeGraph.tsx",
+        "file:frontend/src/components/ArchitectureReport.tsx",
+        "file:frontend/src/components/UploadZone.tsx",
+        "file:frontend/src/components/NavBar.tsx"
+      ]
+    },
+    {
+      "id": "layer:api-gateway",
+      "name": "API & Service Layer",
+      "description": "HTTP communication layer — frontend API client và backend REST server. Handles auth, project CRUD, file upload, và chat.",
+      "nodeIds": [
+        "file:frontend/src/services/api.ts",
+        "file:backend/server.js",
+        "file:api/index.js"
+      ]
+    },
+    {
+      "id": "layer:business",
+      "name": "Business Logic Layer",
+      "description": "Core analysis engine — understand-anything pipeline integration, project analysis orchestration, scoring algorithms.",
+      "nodeIds": [
+        "file:backend/services/analyzer.js"
+      ]
+    },
+    {
+      "id": "layer:research",
+      "name": "Research Pipeline Layer",
+      "description": "Python ML research pipeline — data preprocessing, Early Warning System (AUC=0.850), learning trajectory analysis, visualization dashboard.",
+      "nodeIds": [
+        "file:research/01_data_preprocessing.py",
+        "file:research/02_early_warning_system.py",
+        "file:research/03_learning_trajectories.py",
+        "file:research/04_summary_dashboard.py"
+      ]
+    },
+    {
+      "id": "layer:infrastructure",
+      "name": "Infrastructure & Config Layer",
+      "description": "Deployment configuration — Vercel serverless, Vite build tool, npm package manifests.",
+      "nodeIds": [
+        "config:vercel.json",
+        "config:frontend/vite.config.ts",
+        "config:backend/package.json",
+        "config:frontend/package.json"
+      ]
+    },
+    {
+      "id": "layer:documentation",
+      "name": "Documentation Layer",
+      "description": "Academic and technical documentation — KLTN thesis (88KB), conference paper draft, rubric framework, experimental design.",
+      "nodeIds": [
+        "document:README.md",
+        "document:bao_cao_do_an_KLTN.md",
+        "document:research_paper_DRAFT.md",
+        "file:research_docs/rubric_framework.md",
+        "file:research_docs/experimental_design.md",
+        "file:research_docs/research_proposal.md"
+      ]
+    }
+  ],
+  "tour": [
+    {
+      "order": 1,
+      "title": "Bắt đầu từ README",
+      "description": "README.md mô tả toàn bộ hệ thống NEU-CodeLens: kiến trúc 3 tầng (Frontend React → Backend Express → Research Python), các endpoint API, và hướng dẫn cài đặt.",
+      "nodeIds": ["document:README.md"]
+    },
+    {
+      "order": 2,
+      "title": "Backend API Server — Trái tim của hệ thống",
+      "description": "server.js là Express.js server chính với 9 API endpoints. Quan trọng nhất: POST /projects nhận ZIP upload, giải nén, chạy analyze pipeline bất đồng bộ, và lưu kết quả.",
+      "nodeIds": ["file:backend/server.js", "file:api/index.js"]
+    },
+    {
+      "order": 3,
+      "title": "Analyzer Service — Tích hợp understand-anything",
+      "description": "analyzer.js chứa logic tích hợp understand-anything pipeline. Nó chạy full analysis trên codebase sinh viên, trả về nodes/edges/layers và các điểm số kiến trúc.",
+      "nodeIds": ["file:backend/services/analyzer.js"]
+    },
+    {
+      "order": 4,
+      "title": "Frontend Router — 6 Trang UI",
+      "description": "App.tsx định nghĩa 6 routes với React Router v6. Mỗi route tương ứng với một vai trò (sinh viên/giảng viên) hoặc một chức năng (xem project, chat, classroom analytics).",
+      "nodeIds": ["file:frontend/src/App.tsx", "file:frontend/src/main.tsx"]
+    },
+    {
+      "order": 5,
+      "title": "Knowledge Graph Visualization",
+      "description": "KnowledgeGraph.tsx render đồ thị force-directed từ dữ liệu graph JSON. ProjectView.tsx tích hợp cả KnowledgeGraph và ArchitectureReport trong giao diện tab.",
+      "nodeIds": ["file:frontend/src/components/KnowledgeGraph.tsx", "file:frontend/src/pages/ProjectView.tsx"]
+    },
+    {
+      "order": 6,
+      "title": "Research Pipeline — Early Warning System",
+      "description": "Pipeline Python 4 module: (1) trích xuất 13 features từ 201K events, (2) train Random Forest đạt AUC=0.850 phát hiện sinh viên at-risk, (3) phân tích quỹ đạo học tập, (4) tổng hợp báo cáo.",
+      "nodeIds": [
+        "file:research/01_data_preprocessing.py",
+        "file:research/02_early_warning_system.py",
+        "file:research/03_learning_trajectories.py",
+        "file:research/04_summary_dashboard.py"
+      ]
+    },
+    {
+      "order": 7,
+      "title": "Rubric Framework — Khung đánh giá 3 tầng",
+      "description": "rubric_framework.md định nghĩa khung đánh giá 100 điểm với 11 tiêu chí: Tầng 1 Correctness (40pt), Tầng 2 Code Quality (35pt), Tầng 3 Computational Thinking (25pt).",
+      "nodeIds": ["file:research_docs/rubric_framework.md", "document:bao_cao_do_an_KLTN.md"]
+    },
+    {
+      "order": 8,
+      "title": "Classroom Dashboard — Phân tích lớp học",
+      "description": "ClassroomDashboard.tsx là giao diện cho giảng viên xem tổng quan toàn lớp: phân bố điểm, sinh viên at-risk, xu hướng nộp bài — tích hợp kết quả EWS vào UI.",
+      "nodeIds": ["file:frontend/src/pages/ClassroomDashboard.tsx", "file:frontend/src/pages/LecturerDashboard.tsx"]
+    }
+  ]
+}

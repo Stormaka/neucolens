@@ -207,15 +207,34 @@ export default function KnowledgeGraph({ data, onNodeSelect, selectedNodeId }: P
     return () => simulation.stop()
   }, [data, onNodeSelect])
 
-  // Highlight selected node
+  // Highlight selected node + search results
   useEffect(() => {
     if (!svgRef.current) return
-    d3.select(svgRef.current).selectAll('.node-main')
+    const svg = d3.select(svgRef.current)
+
+    // Main circle: stroke for selected, opacity for search
+    svg.selectAll<Element, any>('.node-main')
       .attr('stroke', (d: any) => d.id === selectedNodeId ? '#fff' : 'rgba(255,255,255,0.2)')
       .attr('stroke-width', (d: any) => d.id === selectedNodeId ? 3 : 1.5)
       .attr('opacity', (d: any) => {
         if (highlightedIds.size === 0) return 1
-        return highlightedIds.has(d.id) ? 1 : 0.25
+        return highlightedIds.has(d.id) ? 1 : 0.15
+      })
+
+    // Label opacity
+    svg.selectAll<Element, any>('.node-group text')
+      .attr('opacity', (d: any) => {
+        if (highlightedIds.size === 0) return 1
+        return highlightedIds.has(d.id) ? 1 : 0.15
+      })
+
+    // Edge opacity
+    svg.selectAll<Element, any>('.links line')
+      .attr('opacity', (d: any) => {
+        if (highlightedIds.size === 0) return 1
+        const srcId = typeof d.source === 'object' ? d.source.id : d.source
+        const tgtId = typeof d.target === 'object' ? d.target.id : d.target
+        return (highlightedIds.has(srcId) || highlightedIds.has(tgtId)) ? 1 : 0.05
       })
   }, [selectedNodeId, highlightedIds])
 
@@ -259,22 +278,43 @@ export default function KnowledgeGraph({ data, onNodeSelect, selectedNodeId }: P
         position: 'absolute', top: '16px', left: '16px', zIndex: 10,
         display: 'flex', gap: '8px', alignItems: 'center',
       }}>
-        <input
-          className="input"
-          style={{
-            width: '240px',
-            padding: '8px 14px',
-            fontSize: '0.85rem',
-            background: 'rgba(17,19,24,0.9)',
-            backdropFilter: 'blur(10px)',
-          }}
-          placeholder="🔍 Tìm kiếm node..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
+        <div style={{ position: 'relative' }}>
+          <input
+            className="input"
+            style={{
+              width: '240px',
+              padding: '8px 36px 8px 14px',
+              fontSize: '0.85rem',
+              background: 'rgba(17,19,24,0.9)',
+              backdropFilter: 'blur(10px)',
+            }}
+            placeholder="🔍 Tìm kiếm node..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              style={{
+                position: 'absolute', right: '8px', top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: 'var(--text-muted)', fontSize: '14px',
+                lineHeight: 1, padding: '2px 4px',
+                borderRadius: '4px',
+              }}
+              title="Xóa tìm kiếm"
+            >×</button>
+          )}
+        </div>
         {search && (
-          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', background: 'var(--bg-surface)', padding: '4px 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-            {highlightedIds.size} kết quả
+          <span style={{
+            fontSize: '0.78rem', color: highlightedIds.size > 0 ? '#34d399' : '#f87171',
+            background: 'var(--bg-surface)', padding: '4px 8px',
+            borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)',
+            whiteSpace: 'nowrap',
+          }}>
+            {highlightedIds.size > 0 ? `${highlightedIds.size} kết quả` : 'Không tìm thấy'}
           </span>
         )}
       </div>

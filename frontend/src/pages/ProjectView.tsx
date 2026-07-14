@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import NavBar from '../components/NavBar'
 import KnowledgeGraph from '../components/KnowledgeGraph'
 import ArchitectureReport from '../components/ArchitectureReport'
@@ -12,8 +12,22 @@ type Tab = 'graph' | 'report' | 'tour' | 'layers'
 export default function ProjectView() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<Tab>('graph')
+  const [searchParams] = useSearchParams()
+
+  // Detect role from URL: ?from=lecturer means lecturer context
+  const fromRole = searchParams.get('from') === 'lecturer' ? 'lecturer' : 'student'
+
+  // Support ?tab=report (or graph/tour/layers) from other pages
+  const tabParam = searchParams.get('tab') as Tab | null
+  const [activeTab, setActiveTab] = useState<Tab>(tabParam && ['graph','report','tour','layers'].includes(tabParam) ? tabParam : 'graph')
   const [selectedNode, setSelectedNode] = useState<any>(null)
+
+  // Sync tab if URL changes (e.g. navigate with new ?tab)
+  useEffect(() => {
+    if (tabParam && ['graph','report','tour','layers'].includes(tabParam)) {
+      setActiveTab(tabParam as Tab)
+    }
+  }, [tabParam])
 
   // Lấy project từ store, nếu không thấy dùng fallback
   const storedProject = id ? projectStore.getById(id) : undefined
@@ -34,6 +48,9 @@ export default function ProjectView() {
     tags: ['spring-boot', 'mysql'],
     layerNames: ['API', 'Service', 'Repository', 'Entity'],
     graphSource: 'sample',
+    reviewStatus: 'pending',
+    reviewComment: '',
+    reviewScore: 0,
   }
 
   // Graph data: dùng SAMPLE_GRAPH cho proj mẫu, tạo dynamic cho proj upload
@@ -41,14 +58,25 @@ export default function ProjectView() {
     ? buildDynamicGraph(project)
     : SAMPLE_GRAPH
 
+  const handleExportPDF = () => {
+    // Switch to report tab first, then print
+    setActiveTab('report')
+    setTimeout(() => window.print(), 300)
+  }
+
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-root)' }}>
-      <NavBar role="student" userName={project.student} />
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg0)' }}>
+      <NavBar
+        role={fromRole}
+        userName={fromRole === 'lecturer' ? 'TS. Nguyễn Minh Đức' : project.student}
+        studentId={fromRole === 'student' ? project.studentId : undefined}
+      />
 
       {/* ── Sub-header ── */}
-      <div style={{
-        background: 'var(--bg-surface)',
-        borderBottom: '1px solid var(--border-subtle)',
+      <div className="no-print" style={{
+        background: 'rgba(6,8,16,.92)',
+        backdropFilter: 'blur(16px)',
+        borderBottom: '1px solid var(--b1)',
         padding: '0 24px',
         display: 'flex',
         alignItems: 'center',
@@ -61,15 +89,15 @@ export default function ProjectView() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <button
             className="btn btn-ghost btn-sm"
-            onClick={() => navigate('/student')}
+            onClick={() => navigate(fromRole === 'lecturer' ? '/lecturer' : '/student')}
             style={{ padding: '6px 8px' }}
           >
             ← Quay lại
           </button>
-          <div className="divider" />
+          <div style={{ width: '1px', height: '16px', background: 'var(--b2)' }} />
           <div>
-            <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{project.name}</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.95rem', fontFamily: 'var(--display)' }}>{project.name}</div>
+            <div style={{ fontSize: '0.73rem', color: 'var(--t3)', fontFamily: 'var(--mono)' }}>
               {project.studentId} · {project.lang} · commit {project.commit}
             </div>
           </div>
@@ -85,21 +113,25 @@ export default function ProjectView() {
           ] as const).map(tab => (
             <button
               key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => {
+                setActiveTab(tab.key)
+                const params = new URLSearchParams(searchParams.toString())
+                params.set('tab', tab.key)
+                navigate(`/project/${id}?${params.toString()}`, { replace: true })
+              }}
               style={{
-                padding: '12px 16px',
-                borderBottom: activeTab === tab.key
-                  ? '2px solid var(--neu-red)'
-                  : '2px solid transparent',
+                padding: '12px 18px',
                 background: 'transparent',
-                color: activeTab === tab.key ? 'var(--text-primary)' : 'var(--text-muted)',
-                fontSize: '0.85rem',
+                color: activeTab === tab.key ? 'var(--t1)' : 'var(--t3)',
+                fontSize: '0.84rem',
                 fontWeight: activeTab === tab.key ? 600 : 400,
                 cursor: 'pointer',
                 border: 'none',
-                transition: 'all 0.15s',
-                fontFamily: 'var(--font-sans)',
+                borderBottom: activeTab === tab.key ? '2px solid var(--rl)' : '2px solid transparent',
+                transition: 'all var(--t-fast) var(--ease)',
+                fontFamily: 'var(--sans)',
                 whiteSpace: 'nowrap',
+                marginBottom: '-1px',
               }}
             >
               {tab.label}
@@ -108,14 +140,17 @@ export default function ProjectView() {
         </div>
 
         {/* Actions */}
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', paddingBottom: '10px' }}>
           <button
             className="btn btn-secondary btn-sm"
             onClick={() => navigate(`/chat/${id}`)}
           >
             💬 Hỏi về code
           </button>
-          <button className="btn btn-secondary btn-sm">
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={handleExportPDF}
+          >
             📤 Xuất PDF
           </button>
         </div>

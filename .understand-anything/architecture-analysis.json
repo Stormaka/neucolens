@@ -1,0 +1,190 @@
+{
+  "overallScore": 82,
+  "architecturePattern": "fullstack-spa-rest-api",
+  "generatedAt": "2026-06-20T14:19:00Z",
+  "projectName": "NEU-CodeLens v2.0",
+  "layers": [
+    {
+      "name": "Presentation Layer (React SPA)",
+      "nodeIds": ["LandingPage", "StudentDashboard", "LecturerDashboard", "ProjectView", "ChatPage", "ClassroomDashboard", "KnowledgeGraph", "ArchitectureReport", "UploadZone", "NavBar"],
+      "description": "Frontend React 18 + Vite + TypeScript — 6 trang UI đầy đủ phân theo vai trò (sinh viên / giảng viên), 4 components tái sử dụng. Routing với react-router-dom v6.",
+      "quality": "good",
+      "issues": ["Thiếu global state management (Redux/Zustand) — các trang dùng local state riêng", "Không có Error Boundary để xử lý lỗi runtime React"]
+    },
+    {
+      "name": "API Gateway Layer",
+      "nodeIds": ["api.ts", "api/index.js"],
+      "description": "Frontend API client (api.ts) với typed fetch wrappers. api/index.js là Vercel serverless adapter re-export Express app.",
+      "quality": "good",
+      "issues": ["api.ts thiếu retry logic và timeout handling", "Không có request interceptor cho auth token refresh"]
+    },
+    {
+      "name": "Business Logic Layer (Express REST API)",
+      "nodeIds": ["server.js"],
+      "description": "Express.js server với 9 REST endpoints. Xử lý upload ZIP, async analysis pipeline, CRUD projects, chat endpoint.",
+      "quality": "needs-improvement",
+      "issues": [
+        "Fat Server: server.js (424 dòng) chứa cả database helpers + route handlers + business logic — nên tách thành controllers + services",
+        "Không có JWT verification middleware — token được tạo nhưng không kiểm tra ở các request sau",
+        "Database dùng JSON file (projects.json) — không scale, không concurrent-safe"
+      ]
+    },
+    {
+      "name": "Analysis Engine Layer",
+      "nodeIds": ["analyzer.js"],
+      "description": "Core understand-anything integration — 27KB, phân tích codebase sinh viên và tính điểm kiến trúc.",
+      "quality": "good",
+      "issues": ["Thiếu test coverage cho analyzer logic", "Error handling chưa đủ chi tiết cho các loại lỗi khác nhau"]
+    },
+    {
+      "name": "Research Pipeline Layer (Python)",
+      "nodeIds": ["01_data_preprocessing.py", "02_early_warning_system.py", "03_learning_trajectories.py", "04_summary_dashboard.py"],
+      "description": "Pipeline ML 4 module — độc lập với web application. Kết quả EWS (AUC=0.850) validate phương pháp luận NEU-CodeLens.",
+      "quality": "good",
+      "issues": ["Không tích hợp trực tiếp vào backend — cần REST API hoặc gRPC bridge để production-ready", "Hard-coded data paths"]
+    }
+  ],
+  "designPatterns": [
+    {
+      "name": "RESTful API Pattern",
+      "found": true,
+      "examples": ["GET /api/projects", "POST /api/projects", "GET /api/projects/:id/graph", "POST /api/projects/:id/chat"],
+      "description": "Backend tuân thủ đúng REST conventions với HTTP verbs phù hợp và resource-based URLs"
+    },
+    {
+      "name": "Service Layer Pattern",
+      "found": true,
+      "examples": ["backend/services/analyzer.js", "frontend/src/services/api.ts"],
+      "description": "Cả frontend và backend đều tách service layer riêng — tốt cho maintainability"
+    },
+    {
+      "name": "Component-Based Architecture",
+      "found": true,
+      "examples": ["KnowledgeGraph.tsx", "ArchitectureReport.tsx", "UploadZone.tsx", "NavBar.tsx"],
+      "description": "React components được tái sử dụng trong nhiều pages — áp dụng đúng composition pattern"
+    },
+    {
+      "name": "Adapter/Wrapper Pattern",
+      "found": true,
+      "examples": ["api/index.js (Vercel adapter)", "services/api.ts (fetch wrapper)"],
+      "description": "api/index.js là adapter cho Vercel serverless; api.ts là wrapper cho native fetch với typing"
+    },
+    {
+      "name": "Observer/Async Pattern",
+      "found": true,
+      "examples": ["server.js: setImmediate() for async analysis", "frontend: polling or WebSocket for analysis status"],
+      "description": "Phân tích project chạy bất đồng bộ sau khi upload — trả về ngay 201 Created"
+    }
+  ],
+  "antiPatterns": [
+    {
+      "name": "Fat Server / God File",
+      "severity": "warning",
+      "instances": ["backend/server.js (424 dòng)"],
+      "description": "server.js chứa quá nhiều responsibilities: database helpers (loadProjects, saveProjects, getProject, updateProject) + 9 route handlers + middleware config + app bootstrap. Nên tách thành: routes/projectRoutes.js, routes/authRoutes.js, controllers/projectController.js, models/projectModel.js"
+    },
+    {
+      "name": "Missing Authentication Guard",
+      "severity": "warning",
+      "instances": ["POST /api/projects/:id/review", "GET /api/projects (role-based filtering)"],
+      "description": "Token JWT được tạo ở /api/auth/login nhưng không được verify ở các endpoint khác. Bất kỳ ai cũng có thể gọi /review hoặc lấy toàn bộ projects của sinh viên khác."
+    },
+    {
+      "name": "File-Based Database",
+      "severity": "info",
+      "instances": ["backend/data/projects.json"],
+      "description": "Dùng JSON file làm database đơn giản cho prototype — chấp nhận được cho KLTN demo nhưng không phù hợp production. Recommend: SQLite (đơn giản) hoặc PostgreSQL (scale)."
+    },
+    {
+      "name": "Missing Error Boundaries",
+      "severity": "info",
+      "instances": ["frontend/src/App.tsx"],
+      "description": "React app không có Error Boundary component — lỗi trong bất kỳ component nào sẽ crash toàn bộ app. Nên bọc routes trong <ErrorBoundary>."
+    }
+  ],
+  "recommendations": [
+    {
+      "priority": "high",
+      "title": "Tách server.js thành Controller-Service-Model pattern",
+      "description": "Di chuyển database helpers vào models/Project.js, route handlers vào controllers/, và mount routes từ routes/. Giúp code dễ test và maintain hơn.",
+      "effort": "1-2 ngày"
+    },
+    {
+      "priority": "high",
+      "title": "Thêm JWT middleware authentication",
+      "description": "Tạo middleware authMiddleware.js để verify JWT token trước khi xử lý các endpoint cần bảo mật. Sử dụng thư viện jsonwebtoken.",
+      "effort": "0.5 ngày"
+    },
+    {
+      "priority": "medium",
+      "title": "Thêm Unit Tests cho analyzer service",
+      "description": "Viết Jest tests cho services/analyzer.js — mock the understand-anything calls, test score calculation logic. Target: 70%+ coverage.",
+      "effort": "2-3 ngày"
+    },
+    {
+      "priority": "medium",
+      "title": "Tích hợp Python EWS vào backend",
+      "description": "Expose Python research pipeline qua Flask microservice hoặc python-shell npm package. Cho phép backend gọi EWS predictions real-time.",
+      "effort": "2-3 ngày"
+    },
+    {
+      "priority": "medium",
+      "title": "Thêm WebSocket cho real-time analysis status",
+      "description": "Hiện tại frontend phải polling để biết analysis status. Dùng socket.io để push updates từ server khi analyze xong — UX tốt hơn.",
+      "effort": "1 ngày"
+    },
+    {
+      "priority": "low",
+      "title": "CI/CD với GitHub Actions",
+      "description": "Tạo .github/workflows/deploy.yml để tự động test + deploy lên Vercel khi push lên main branch.",
+      "effort": "0.5 ngày"
+    },
+    {
+      "priority": "low",
+      "title": "Migrate database sang SQLite",
+      "description": "Dùng better-sqlite3 npm package thay cho JSON file. Schema: projects table với các cột metadata. Không cần cài đặt database server.",
+      "effort": "1 ngày"
+    }
+  ],
+  "strengths": [
+    "Phân tầng Frontend/Backend/Research rõ ràng — không bị trộn lẫn",
+    "TypeScript được dùng đúng cách ở frontend — typed API responses",
+    "Async analysis pipeline design tốt — upload trả về ngay, analyze chạy nền",
+    "Component tái sử dụng: KnowledgeGraph, ArchitectureReport có thể dùng ở nhiều trang",
+    "Tích hợp understand-anything pipeline đúng cách vào backend",
+    "Research pipeline Python hoàn chỉnh với kết quả định lượng (AUC=0.850)",
+    "Documentation xuất sắc: README + KLTN 88KB + conference paper draft",
+    "Deployment trên Vercel với serverless adapter — production-ready"
+  ],
+  "weaknesses": [
+    "Thiếu authentication/authorization thực sự",
+    "Không có unit tests hay integration tests",
+    "Database JSON file không concurrent-safe, không scale",
+    "server.js quá lớn — vi phạm SRP (Single Responsibility Principle)",
+    "Research Python pipeline chưa tích hợp trực tiếp vào web app",
+    "Không có CI/CD pipeline",
+    "Thiếu input validation ở một số API endpoints"
+  ],
+  "solidAnalysis": {
+    "SRP": { "score": 65, "note": "server.js vi phạm SRP rõ ràng. Các components React tuân thủ tốt." },
+    "OCP": { "score": 70, "note": "Analyzer service có thể extend mà không sửa core. Routes khó extend hơn." },
+    "LSP": { "score": 85, "note": "TypeScript interfaces đảm bảo substitutability tốt." },
+    "ISP": { "score": 75, "note": "API client (api.ts) cung cấp các function riêng biệt thay vì một interface khổng lồ." },
+    "DIP": { "score": 60, "note": "server.js import trực tiếp analyzer.js — nên dùng interface/abstraction." }
+  },
+  "neuReviewNote": "Đây là một KLTN xuất sắc về cả kỹ thuật lẫn nghiên cứu. Nhóm sinh viên đã xây dựng thành công hệ thống fullstack hoàn chỉnh (React + Node.js + Python) với tính năng thực tế: upload code sinh viên, phân tích kiến trúc tự động bằng understand-anything, và dashboard cho cả sinh viên lẫn giảng viên. Điểm đặc biệt là việc tích hợp pipeline nghiên cứu ML (EWS với AUC=0.850) vào một sản phẩm phần mềm thực tế — điều hiếm thấy ở cấp KLTN. Điểm cần cải thiện trước bảo vệ: (1) bổ sung authentication JWT thực sự, (2) thêm ít nhất test cho analyzer service, (3) tách server.js theo MVC. Về tổng thể, đề tài có tính mới cao, kết quả định lượng cụ thể, và hệ thống demo được — hoàn toàn xứng đáng điểm A.",
+  "summary": {
+    "totalFiles": 30,
+    "codeFiles": 17,
+    "docFiles": 6,
+    "configFiles": 4,
+    "researchFiles": 4,
+    "totalNodes": 30,
+    "totalEdges": 30,
+    "totalLayers": 5,
+    "architectureScore": 82,
+    "complexityScore": 75,
+    "cohesionScore": 78,
+    "overallScore": 82
+  }
+}

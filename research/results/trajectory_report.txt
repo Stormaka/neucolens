@@ -1,0 +1,65 @@
+============================================================
+LEARNING TRAJECTORY ANALYSIS RESULTS (RQ4)
+============================================================
+Dataset: S19_All_Release_2_10_22 (Spring 2019)
+Students analyzed: 373
+Assignments: 5 (A1
+Basics, A2
+Control Flow, A3
+Arrays, A4
+Methods, A5
+OOP)
+
+────────────────────────────────────────────────────────────
+MEAN SCORE PER ASSIGNMENT (all students):
+────────────────────────────────────────────────────────────
+  A1
+Basics           : mean=0.977  std=0.144  n=349
+  A2
+Control Flow     : mean=0.987  std=0.101  n=322
+  A3
+Arrays           : mean=0.988  std=0.087  n=342
+  A4
+Methods          : mean=0.997  std=0.057  n=308
+  A5
+OOP              : mean=0.994  std=0.055  n=306
+
+────────────────────────────────────────────────────────────
+GRADE GROUP STATISTICS:
+────────────────────────────────────────────────────────────
+
+At-Risk (n=100):
+  Final Grade  : mean=0.298, std=0.186
+  Score Slope  : mean=0.0098 (positive = improving over assignments)
+  A1 Score     : 0.940
+  A5 Score     : 1.000
+  Δ Score (A5-A1): +0.060
+
+Passing (n=103):
+  Final Grade  : mean=0.606, std=0.056
+  Score Slope  : mean=-0.0021 (positive = improving over assignments)
+  A1 Score     : 0.995
+  A5 Score     : 0.987
+  Δ Score (A5-A1): -0.009
+
+Good (n=103):
+  Final Grade  : mean=0.778, std=0.044
+  Score Slope  : mean=0.0004 (positive = improving over assignments)
+  A1 Score     : 0.980
+  A5 Score     : 0.993
+  Δ Score (A5-A1): +0.013
+
+Excellent (n=67):
+  Final Grade  : mean=0.898, std=0.030
+  Score Slope  : mean=-0.0000 (positive = improving over assignments)
+  A1 Score     : 1.000
+  A5 Score     : 1.000
+  Δ Score (A5-A1): +0.000
+
+────────────────────────────────────────────────────────────
+K-MEANS CLUSTER ANALYSIS (K=4):
+────────────────────────────────────────────────────────────
+  At-Risk     : n=  7, mean_grade=0.311
+  Passing     : n=  1, mean_grade=0.380
+  Good        : n=361, mean_grade=0.630
+  Excellent   : n=  4, mean_grade=0.678

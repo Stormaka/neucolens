@@ -20,6 +20,11 @@ export interface ProjectMeta {
   graphSource: 'sample' | 'uploaded'
   // tên file zip gốc (nếu upload)
   sourceFile?: string
+  // ── Review của giảng viên ──
+  reviewStatus: 'pending' | 'reviewed'
+  reviewComment: string
+  reviewScore: number   // 0–100, 0 = chưa chấm
+  reviewedAt?: string
 }
 
 // Mock projects mặc định
@@ -40,6 +45,10 @@ const DEFAULT_PROJECTS: ProjectMeta[] = [
     tags: ['spring-boot', 'mysql', 'rest-api'],
     layerNames: ['API', 'Service', 'Repository', 'Entity'],
     graphSource: 'sample',
+    reviewStatus: 'reviewed',
+    reviewComment: 'Kiến trúc rõ ràng, phân tầng tốt. Cần bổ thêm unit test.',
+    reviewScore: 82,
+    reviewedAt: '2026-06-06 08:00',
   },
   {
     id: 'proj-2',
@@ -57,6 +66,9 @@ const DEFAULT_PROJECTS: ProjectMeta[] = [
     tags: ['react', 'express', 'mongodb'],
     layerNames: ['Frontend', 'API', 'Database'],
     graphSource: 'sample',
+    reviewStatus: 'pending',
+    reviewComment: '',
+    reviewScore: 0,
   },
 ]
 
@@ -94,10 +106,25 @@ export const projectStore = {
       _listeners = _listeners.filter(l => l !== fn)
     }
   },
+
+  /** Giảng viên lưu nhận xét + điểm */
+  updateReview(id: string, comment: string, score: number) {
+    const now = new Date()
+    const reviewedAt = now.toLocaleDateString('vi-VN') + ' ' + now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+    _projects = _projects.map(p =>
+      p.id === id
+        ? { ...p, reviewComment: comment, reviewScore: score, reviewStatus: 'reviewed', reviewedAt }
+        : p
+    )
+    _listeners.forEach(fn => fn())
+  },
 }
 
 /** Tạo project metadata từ tên file zip */
-export function buildProjectFromZip(fileName: string): ProjectMeta {
+export function buildProjectFromZip(
+  fileName: string,
+  studentInfo?: { name: string; studentId: string }
+): ProjectMeta {
   // Bỏ extension, convert thành tên đẹp
   const baseName = fileName.replace(/\.(zip|tar\.gz|tgz)$/i, '')
   const displayName = baseName
@@ -121,8 +148,8 @@ export function buildProjectFromZip(fileName: string): ProjectMeta {
   return {
     id: 'proj-upload-' + Date.now(),
     name: displayName,
-    student: 'Nguyễn Văn An',
-    studentId: '11201234',
+    student: studentInfo?.name ?? 'Nguyễn Văn An',
+    studentId: studentInfo?.studentId ?? '11201234',
     lang,
     commit: Math.random().toString(16).slice(2, 9),
     analyzedAt,
@@ -135,6 +162,9 @@ export function buildProjectFromZip(fileName: string): ProjectMeta {
     layerNames: ['API', 'Service', 'Repository', 'Entity'],
     graphSource: 'uploaded',
     sourceFile: fileName,
+    reviewStatus: 'pending',
+    reviewComment: '',
+    reviewScore: 0,
   }
 }
 

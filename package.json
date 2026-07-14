@@ -17,6 +17,8 @@
     "uuid": "^10.0.0"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "puppeteer": "^25.3.0",
+    "vercel": "^54.11.1"
   }
 }
