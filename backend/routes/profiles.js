@@ -100,7 +100,7 @@ router.get('/classroom/:classId/ews', authenticate, (req, res) => {
   `).all(req.params.classId, req.params.classId)
 
   res.json({
-    atRisk: atRisk.map(s => ({ ...s, misconceptions: JSON.parse(s.misconceptions_json || '[]') })),
+    atRisk: atRisk.map(s => { const { misconceptions_json, ...clean } = s; return { ...clean, misconceptions: JSON.parse(misconceptions_json || '[]') } }),
     aiWarning
   })
 })

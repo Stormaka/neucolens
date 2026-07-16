@@ -186,7 +186,7 @@ export default function StudentDashboard() {
                           {sub?.ai_suspicion_flag ? <span className="badge bdy">🤖 AI Warning</span> : null}
                         </div>
                         <div style={{ fontWeight: 700, fontSize: '.9rem', marginBottom: '4px' }}>{a.title}</div>
-                        <div style={{ fontSize: '.78rem', color: 'var(--t2)' }}>{a.description?.substring(0, 90)}...</div>
+                        <div style={{ fontSize: '.78rem', color: 'var(--t2)' }}>{(a.description?.length || 0) > 90 ? a.description.substring(0, 90) + '...' : a.description}</div>
                         <div style={{ fontSize: '.7rem', color: 'var(--t3)', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                           🗓 DL: {fmtDate(a.deadline)}
                         </div>

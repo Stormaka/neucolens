@@ -86,7 +86,8 @@ router.get('/me/batch', authenticate, (req, res) => {
 
   const result = {}
   subs.forEach(s => {
-    result[s.assignment_id] = { ...s, misconceptions: JSON.parse(s.misconceptions_json || '[]') }
+    const { misconceptions_json, ...clean } = s
+    result[s.assignment_id] = { ...clean, misconceptions: JSON.parse(misconceptions_json || '[]') }
   })
   res.json(result)
 })
@@ -95,14 +96,14 @@ router.get('/me/batch', authenticate, (req, res) => {
 router.get('/me/:assignmentId', authenticate, (req, res) => {
   const db = getDb()
   const subs = db.prepare(`SELECT * FROM submissions WHERE assignment_id=? AND student_id=? ORDER BY submitted_at DESC`).all(req.params.assignmentId, req.user.id)
-  res.json(subs.map(s => ({ ...s, misconceptions: JSON.parse(s.misconceptions_json || '[]') })))
+  res.json(subs.map(s => { const { misconceptions_json, ...c } = s; return { ...c, misconceptions: JSON.parse(misconceptions_json || '[]') } }))
 })
 
 // GET /api/submissions/my/:assignmentId — backward compat alias (#2)
 router.get('/my/:assignmentId', authenticate, (req, res) => {
   const db = getDb()
   const subs = db.prepare(`SELECT * FROM submissions WHERE assignment_id=? AND student_id=? ORDER BY submitted_at DESC`).all(req.params.assignmentId, req.user.id)
-  res.json(subs.map(s => ({ ...s, misconceptions: JSON.parse(s.misconceptions_json || '[]') })))
+  res.json(subs.map(s => { const { misconceptions_json, ...c } = s; return { ...c, misconceptions: JSON.parse(misconceptions_json || '[]') } }))
 })
 
 // GET /api/submissions/student/:studentId/classroom/:classId — teacher view
@@ -139,7 +140,8 @@ router.get('/:id', authenticate, (req, res) => {
   const sub = db.prepare('SELECT * FROM submissions WHERE id=?').get(req.params.id)
   if (!sub) return res.status(404).json({ error: 'Không tìm thấy submission', status: 404 })
   if (sub.student_id !== req.user.id && req.user.role !== 'teacher') return res.status(403).json({ error: 'Không có quyền', status: 403 })
-  res.json({ ...sub, misconceptions: JSON.parse(sub.misconceptions_json || '[]') })
+  const { misconceptions_json, ...clean } = sub
+  res.json({ ...clean, misconceptions: JSON.parse(misconceptions_json || '[]') })
 })
 
 export default router
