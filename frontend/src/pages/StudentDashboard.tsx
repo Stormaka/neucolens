@@ -43,12 +43,13 @@ export default function StudentDashboard() {
       const [asgnList, prof] = await Promise.all([assignments.byClassroom(room.id), profiles.me(room.id)])
       setAsgns(asgnList); setMyProfile(prof)
       if (asgnList.length > 0) setSelAsgn(asgnList.find((a: any) => a.status === 'open') || asgnList[asgnList.length - 1])
-      const subsMap: Record<number, any> = {}
-      for (const a of asgnList) {
-        const subs = await submissions.my(a.id)
-        if (subs?.length) subsMap[a.id] = subs[0]
+
+      // #25: Batch fetch all submissions in 1 request instead of N separate requests
+      if (asgnList.length > 0) {
+        const ids = asgnList.map((a: any) => a.id)
+        const subsMap = await submissions.batchMy(ids)
+        setMySubs(subsMap as Record<number, any>)
       }
-      setMySubs(subsMap)
     } catch (e: any) { toast(e.error || 'Lỗi tải dữ liệu', true) }
     finally { setLoading(false) }
   }

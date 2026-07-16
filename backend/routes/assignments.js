@@ -7,6 +7,13 @@ const router = express.Router()
 // GET /api/assignments/classroom/:id
 router.get('/classroom/:id', authenticate, (req, res) => {
   const db = getDb()
+  // #7: Pagination support — defaults to page 1, limit 50 (backward-compat for current UI)
+  const page = Math.max(1, parseInt(req.query.page) || 1)
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50))
+  const offset = (page - 1) * limit
+
+  const total = db.prepare('SELECT COUNT(*) as c FROM assignments WHERE classroom_id=?').get(req.params.id).c
+
   const asgns = db.prepare(`
     SELECT a.*,
       COUNT(DISTINCT s.student_id) as submitted_count,
@@ -15,21 +22,29 @@ router.get('/classroom/:id', authenticate, (req, res) => {
     LEFT JOIN submissions s ON a.id=s.assignment_id
     WHERE a.classroom_id=?
     GROUP BY a.id ORDER BY a.id
-  `).all(req.params.id)
+    LIMIT ? OFFSET ?
+  `).all(req.params.id, limit, offset)
 
-  res.json(asgns.map(a => ({
-    ...a,
-    concepts: JSON.parse(a.concepts_json || '[]'),
-    avgScore: Math.round(a.avg_score || 0)
-  })))
+  // #11: Use only camelCase avgScore; #10: strip raw concepts_json since concepts (parsed) is included
+  const data = asgns.map(a => {
+    const { avg_score, concepts_json, ...aClean } = a
+    return {
+      ...aClean,
+      concepts: JSON.parse(concepts_json || '[]'),
+      avgScore: Math.round(avg_score || 0)
+    }
+  })
+
+  res.json({ data, total, page, limit })
 })
 
-// GET /api/assignments/:id — include sample_code
+// GET /api/assignments/:id — include sample_code (#10: strip raw JSON fields)
 router.get('/:id', authenticate, (req, res) => {
   const db = getDb()
   const a = db.prepare('SELECT * FROM assignments WHERE id=?').get(req.params.id)
   if (!a) return res.status(404).json({ error: 'Không tìm thấy bài tập' })
-  res.json({ ...a, concepts: JSON.parse(a.concepts_json || '[]') })
+  const { concepts_json, test_cases_json, ...clean } = a
+  res.json({ ...clean, concepts: JSON.parse(concepts_json || '[]') })
 })
 
 // POST /api/assignments — tạo bài tập mới (với sample_code & dynamic concepts)
@@ -62,7 +77,8 @@ router.patch('/:id', authenticate, requireRole('teacher'), (req, res) => {
   vals.push(req.params.id)
   db.prepare(`UPDATE assignments SET ${updates.join(',')} WHERE id=?`).run(...vals)
   const updated = db.prepare('SELECT * FROM assignments WHERE id=?').get(req.params.id)
-  res.json({ ...updated, concepts: JSON.parse(updated.concepts_json || '[]') })
+  const { concepts_json: uj, test_cases_json: utj, ...updClean } = updated
+  res.json({ ...updClean, concepts: JSON.parse(uj || '[]') })
 })
 
 // PATCH /api/assignments/:id/status
@@ -75,14 +91,18 @@ router.patch('/:id/status', authenticate, requireRole('teacher'), (req, res) => 
 })
 
 // GET /api/assignments/:id/submissions — tất cả submissions (Teacher)
+// #4: expose student_code alias for mssv; #10: strip misconceptions_json raw
 router.get('/:id/submissions', authenticate, requireRole('teacher'), (req, res) => {
   const db = getDb()
   const subs = db.prepare(`
-    SELECT s.*, u.name as student_name, u.mssv
+    SELECT s.*, u.name as student_name, u.mssv, u.mssv as student_code
     FROM submissions s JOIN users u ON s.student_id=u.id
     WHERE s.assignment_id=? ORDER BY s.submitted_at DESC
   `).all(req.params.id)
-  res.json(subs.map(s => ({ ...s, misconceptions: JSON.parse(s.misconceptions_json || '[]') })))
+  res.json(subs.map(s => {
+    const { misconceptions_json, ...clean } = s
+    return { ...clean, misconceptions: JSON.parse(misconceptions_json || '[]') }
+  }))
 })
 
 export default router

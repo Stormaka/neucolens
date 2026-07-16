@@ -127,12 +127,24 @@ export function useToast() {
 }
 
 // ── Radar Chart SVG ────────────────────────────────────────────────────────
+// NOTE: `mastery` keys can be PascalCase (e.g. "Variables", "Loops") from API.
+// We derive the axis list dynamically from the mastery object so no key-case mismatch.
 export function RadarChart({ mastery, size = 200 }: { mastery: Record<string, number>; size?: number }) {
   const cx = size / 2, cy = size / 2, r = size / 2 - 34
-  const pts = CONCEPTS.map((c, i) => ({ ang: i * (360 / 5) - 90, v: mastery[c] || 0 }))
+
+  // Use dynamic keys from actual mastery data; fall back to 5 legacy lowercase keys
+  const keys = Object.keys(mastery).length > 0 ? Object.keys(mastery) : CONCEPTS
+  const count = Math.max(keys.length, 3)
+
+  const pts = keys.map((k, i) => ({ key: k, ang: i * (360 / count) - 90, v: mastery[k] ?? 0 }))
   const xy = (ang: number, v: number) => ({ x: cx + (v / 100) * r * Math.cos(ang * Math.PI / 180), y: cy + (v / 100) * r * Math.sin(ang * Math.PI / 180) })
   const area = pts.map(p => xy(p.ang, p.v))
   const polyPts = area.map(p => `${p.x},${p.y}`).join(' ')
+
+  // Label: use CON_LBL if available (legacy lowercase), else display key as-is
+  const getLabel = (k: string) => CON_LBL[k.toLowerCase()] || k
+  const getEmoji = (k: string) => CON_EM[k.toLowerCase()] || '📌'
+
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ overflow: 'visible' }}>
       {[25, 50, 75, 100].map(g => {
@@ -146,7 +158,7 @@ export function RadarChart({ mastery, size = 200 }: { mastery: Record<string, nu
         const lp = xy(p.ang, 100 + 20)
         const ang = ((p.ang % 360) + 360) % 360
         const anc = ang > 20 && ang < 160 ? 'start' : ang > 200 && ang < 340 ? 'end' : 'middle'
-        return <text key={i} x={lp.x} y={lp.y + 3} textAnchor={anc as any} fontSize="9" fill="#8e98a8">{CON_EM[CONCEPTS[i]]} {CON_LBL[CONCEPTS[i]]} ({pts[i].v}%)</text>
+        return <text key={i} x={lp.x} y={lp.y + 3} textAnchor={anc as any} fontSize="9" fill="#8e98a8">{getEmoji(p.key)} {getLabel(p.key)} ({p.v}%)</text>
       })}
     </svg>
   )

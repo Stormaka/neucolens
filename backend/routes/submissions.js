@@ -8,12 +8,12 @@ const router = express.Router()
 // POST /api/submissions — nộp bài + trigger LLM analysis
 router.post('/', authenticate, async (req, res) => {
   const { assignment_id, code } = req.body
-  if (!assignment_id || code === undefined) return res.status(400).json({ error: 'Thiếu assignment_id hoặc code' })
+  if (!assignment_id || code === undefined) return res.status(400).json({ error: 'Thiếu assignment_id hoặc code', status: 400 })
 
   const db = getDb()
   const asgn = db.prepare('SELECT * FROM assignments WHERE id=?').get(assignment_id)
-  if (!asgn) return res.status(404).json({ error: 'Không tìm thấy bài tập' })
-  if (asgn.status === 'closed') return res.status(400).json({ error: 'Bài tập đã đóng, không thể nộp' })
+  if (!asgn) return res.status(404).json({ error: 'Không tìm thấy bài tập', status: 404 })
+  if (asgn.status === 'closed') return res.status(400).json({ error: 'Bài tập đã đóng, không thể nộp', status: 400 })
 
   // Count attempt number
   const prevCount = db.prepare('SELECT COUNT(*) as c FROM submissions WHERE assignment_id=? AND student_id=?').get(assignment_id, req.user.id).c
@@ -44,7 +44,6 @@ router.post('/', authenticate, async (req, res) => {
         'INSERT INTO misconceptions (student_id, assignment_id, classroom_id, concept, description) VALUES (?,?,?,?,?)'
       )
       detectedMisconceptions.forEach(desc => {
-        // Extract concept từ description (lấy phần trước dấu — hoặc dùng nguyên)
         const concept = desc.split('—')[0].replace(/^[🔴⚠️📌⭐💡🚨\s]+/, '').trim().substring(0, 100)
         try {
           insertMisc.run(req.user.id, assignment_id, asgn.classroom_id, concept, desc)
@@ -62,45 +61,85 @@ router.post('/', authenticate, async (req, res) => {
   }
 })
 
-// GET /api/submissions/:id — lấy kết quả submission (polling)
-router.get('/:id', authenticate, (req, res) => {
+// ── #5/#15: Batch endpoint — trả latest submission cho nhiều assignments trong 1 request ──
+// GET /api/submissions/me/batch?assignmentIds=1,2,3,4,5
+// Returns: { [assignmentId]: latestSubmission }
+router.get('/me/batch', authenticate, (req, res) => {
+  const raw = req.query.assignmentIds || ''
+  const ids = String(raw).split(',').map(Number).filter(n => n > 0)
+  if (!ids.length) return res.json({})
+
   const db = getDb()
-  const sub = db.prepare('SELECT * FROM submissions WHERE id=?').get(req.params.id)
-  if (!sub) return res.status(404).json({ error: 'Không tìm thấy submission' })
-  if (sub.student_id !== req.user.id && req.user.role !== 'teacher') return res.status(403).json({ error: 'Không có quyền' })
-  res.json({ ...sub, misconceptions: JSON.parse(sub.misconceptions_json || '[]') })
+  const placeholders = ids.map(() => '?').join(',')
+  // One query: get latest submission per assignment using subquery
+  const subs = db.prepare(`
+    SELECT s.*
+    FROM submissions s
+    INNER JOIN (
+      SELECT assignment_id, MAX(submitted_at) as latest_at
+      FROM submissions
+      WHERE student_id = ? AND assignment_id IN (${placeholders})
+      GROUP BY assignment_id
+    ) lsub ON s.assignment_id = lsub.assignment_id AND s.submitted_at = lsub.latest_at
+    WHERE s.student_id = ?
+  `).all(req.user.id, ...ids, req.user.id)
+
+  const result = {}
+  subs.forEach(s => {
+    result[s.assignment_id] = { ...s, misconceptions: JSON.parse(s.misconceptions_json || '[]') }
+  })
+  res.json(result)
 })
 
-// GET /api/submissions/my/:assignmentId — lịch sử nộp bài của sinh viên
+// GET /api/submissions/me/:assignmentId — (#2) chuẩn hóa /me/ thay vì /my/
+router.get('/me/:assignmentId', authenticate, (req, res) => {
+  const db = getDb()
+  const subs = db.prepare(`SELECT * FROM submissions WHERE assignment_id=? AND student_id=? ORDER BY submitted_at DESC`).all(req.params.assignmentId, req.user.id)
+  res.json(subs.map(s => ({ ...s, misconceptions: JSON.parse(s.misconceptions_json || '[]') })))
+})
+
+// GET /api/submissions/my/:assignmentId — backward compat alias (#2)
 router.get('/my/:assignmentId', authenticate, (req, res) => {
   const db = getDb()
   const subs = db.prepare(`SELECT * FROM submissions WHERE assignment_id=? AND student_id=? ORDER BY submitted_at DESC`).all(req.params.assignmentId, req.user.id)
   res.json(subs.map(s => ({ ...s, misconceptions: JSON.parse(s.misconceptions_json || '[]') })))
 })
 
-// GET /api/submissions/student/:studentId/classroom/:classId — tất cả submissions của 1 SV (teacher)
+// GET /api/submissions/student/:studentId/classroom/:classId — teacher view
+// #5: fixed N+1 — attempt count now computed in the SQL subquery (single DB call)
 router.get('/student/:studentId/classroom/:classId', authenticate, (req, res) => {
   const db = getDb()
   const subs = db.prepare(`
-    SELECT s.*, a.title as assignment_title, a.concepts_json, a.id as assignment_id
+    SELECT s.*, a.title as assignment_title, a.concepts_json, a.id as assignment_id,
+      (SELECT COUNT(*) FROM submissions
+       WHERE student_id=s.student_id AND assignment_id=s.assignment_id) as total_attempts
     FROM submissions s JOIN assignments a ON s.assignment_id=a.id
     WHERE s.student_id=? AND a.classroom_id=?
     ORDER BY a.id ASC, s.submitted_at DESC
   `).all(req.params.studentId, req.params.classId)
 
-  // Group by assignment — take latest per assignment
   const grouped = {}
   subs.forEach(sub => {
     if (!grouped[sub.assignment_id]) {
+      // #10: strip raw JSON fields
+      const { concepts_json, misconceptions_json, ...clean } = sub
       grouped[sub.assignment_id] = {
-        ...sub,
-        concepts: JSON.parse(sub.concepts_json || '[]'),
-        misconceptions: JSON.parse(sub.misconceptions_json || '[]'),
-        attempt_number: db.prepare('SELECT COUNT(*) as c FROM submissions WHERE assignment_id=? AND student_id=?').get(sub.assignment_id, req.params.studentId).c
+        ...clean,
+        concepts: JSON.parse(concepts_json || '[]'),
+        misconceptions: JSON.parse(misconceptions_json || '[]'),
       }
     }
   })
   res.json(Object.values(grouped))
+})
+
+// GET /api/submissions/:id — polling result (must be after named routes)
+router.get('/:id', authenticate, (req, res) => {
+  const db = getDb()
+  const sub = db.prepare('SELECT * FROM submissions WHERE id=?').get(req.params.id)
+  if (!sub) return res.status(404).json({ error: 'Không tìm thấy submission', status: 404 })
+  if (sub.student_id !== req.user.id && req.user.role !== 'teacher') return res.status(403).json({ error: 'Không có quyền', status: 403 })
+  res.json({ ...sub, misconceptions: JSON.parse(sub.misconceptions_json || '[]') })
 })
 
 export default router

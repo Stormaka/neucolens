@@ -2,11 +2,30 @@ import Database from 'better-sqlite3'
 import { fileURLToPath } from 'url'
 import path from 'path'
 import bcrypt from 'bcryptjs'
+import fs from 'fs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // Production (Render): DATABASE_PATH=/backend/db/skillslab.db (persistent disk)
 // Development: local path
-const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, 'skillslab.db')
+const DB_PATH = (() => {
+  if (process.env.DATABASE_PATH) return process.env.DATABASE_PATH
+  if (process.env.VERCEL) {
+    const tmpPath = '/tmp/skillslab.db'
+    if (!fs.existsSync(tmpPath)) {
+      const srcPath = path.join(__dirname, 'skillslab.db')
+      if (fs.existsSync(srcPath)) {
+        try {
+          fs.copyFileSync(srcPath, tmpPath)
+          console.log('✅ Copied template database to /tmp/skillslab.db')
+        } catch (e) {
+          console.error('⚠️ Failed to copy database to /tmp:', e.message)
+        }
+      }
+    }
+    return tmpPath
+  }
+  return path.join(__dirname, 'skillslab.db')
+})()
 
 let db
 
@@ -221,7 +240,7 @@ const ASGN_15 = [
   { title:'Tuần 12: File I/O',                desc:'Ghi dãy 1..n vào file. Đọc lại và in ra màn hình.', cons:'["I/O","Loops","Memory"]', wk:'w12', st:'closed', dl:'2026-05-11T23:59' },
   { title:'Tuần 13: Lập trình OOP cơ bản',   desc:'Class HinhChuNhat với constructor, diện tích và chu vi.', cons:'["OOP","Functions","Variables"]', wk:'w13', st:'closed', dl:'2026-05-18T23:59' },
   { title:'Tuần 14: Danh sách liên kết',      desc:'Linked list đơn: thêm phần tử đầu, in toàn bộ.', cons:'["Pointers","Memory","Functions","Recursion"]', wk:'w14', st:'closed', dl:'2026-05-25T23:59' },
-  { title:'Tuần 15: Tổng hợp & Thi cuối kỳ', desc:'Dùng vector<int> và sort(). Tổng hợp toàn bộ kiến thức.', cons:'["Arrays","Sorting Algorithm","Functions","Loops"]', wk:'w15', st:'open', dl:'2026-06-01T23:59' },
+  { title:'Tuần 15: Tổng hợp & Thi cuối kỳ', desc:'Dùng vector<int> và sort(). Tổng hợp toàn bộ kiến thức.', cons:'["Arrays","Sorting Algorithm","Functions","Loops"]', wk:'w15', st:'closed', dl:'2026-06-01T23:59' },
 ]
 
 export async function seedDatabase() {

@@ -18,7 +18,8 @@ router.post('/login', (req, res) => {
   const valid = bcrypt.compareSync(password, user.password_hash)
   if (!valid) return res.status(401).json({ error: 'Email hoặc mật khẩu không đúng' })
 
-  const token = jwt.sign({ id: user.id, role: user.role, name: user.name }, JWT_SECRET, { expiresIn: '7d' })
+  // #18: 24h expiry (down from 7d). #19: no PII (name) in JWT payload
+  const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: '24h' })
   res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role, mssv: user.mssv } })
 })
 
@@ -34,7 +35,7 @@ router.post('/register', (req, res) => {
   const hash = bcrypt.hashSync(password, 10)
   try {
     const result = db.prepare('INSERT INTO users (email,password_hash,name,role,mssv) VALUES (?,?,?,?,?)').run(email, hash, name, role, mssv || null)
-    const token = jwt.sign({ id: result.lastInsertRowid, role, name }, JWT_SECRET, { expiresIn: '7d' })
+    const token = jwt.sign({ id: result.lastInsertRowid, role }, JWT_SECRET, { expiresIn: '24h' })
     res.status(201).json({ token, user: { id: result.lastInsertRowid, email, name, role, mssv } })
   } catch (e) {
     res.status(500).json({ error: 'Lỗi tạo tài khoản' })

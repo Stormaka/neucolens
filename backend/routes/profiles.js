@@ -40,8 +40,11 @@ router.get('/me', authenticate, (req, res) => {
   `).all(classId).flatMap(r => { try { return JSON.parse(r.concepts_json) } catch { return [] } })
   const uniqueConcepts = [...new Set(concepts)]
 
+  // #9/#10: Omit raw *_json fields — expose only parsed values
+  const { mastery_json, strengths_json, improvements_json, misconceptions_json, ...profileClean } = profile
+
   res.json({
-    ...profile,
+    ...profileClean,
     conceptMastery: parseMastery(profile),
     classroomConcepts: uniqueConcepts,
     strengths: JSON.parse(profile.strengths_json || '[]'),
@@ -64,8 +67,11 @@ router.get('/:studentId/classroom/:classId', authenticate, (req, res) => {
   `).all(req.params.classId).flatMap(r => { try { return JSON.parse(r.concepts_json) } catch { return [] } })
   const uniqueConcepts = [...new Set(concepts)]
 
+  // #9/#10: Omit raw *_json fields
+  const { mastery_json, strengths_json, improvements_json, misconceptions_json, ...profileClean2 } = profile
+
   res.json({
-    ...profile,
+    ...profileClean2,
     ...user,
     conceptMastery: parseMastery(profile),
     classroomConcepts: uniqueConcepts,

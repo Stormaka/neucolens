@@ -11,5 +11,17 @@ export default defineConfig({
         changeOrigin: true
       }
     }
+  },
+  // #24: Code splitting — split vendor bundles for better caching
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react':  ['react', 'react-dom', 'react-router-dom'],
+          'vendor-ui':     ['lucide-react'],
+          'vendor-data':   ['axios', 'd3'],
+        }
+      }
+    }
   }
 })

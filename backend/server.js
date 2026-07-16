@@ -13,7 +13,9 @@ import misconceptionsRouter from './routes/misconceptions.js'
 const app = express()
 const PORT = process.env.PORT || 3001
 
-// ── Middleware ──────────────────────────────────────────────────────────────
+// ── Security: hide server fingerprint ───────────────────────────────────────
+app.disable('x-powered-by') // #27: don't disclose Express version
+
 const ALLOWED_ORIGINS = [
   'http://localhost:5173',
   'http://localhost:3000',
@@ -95,7 +97,20 @@ app.use('/api/chats', chatsRouter)
 app.use('/api/misconceptions', misconceptionsRouter)
 
 // ── 404 handler ──────────────────────────────────────────────────────────────
-app.use('/api/*', (_, res) => res.status(404).json({ error: 'API endpoint không tồn tại' }))
+app.use('/api/*', (_, res) => res.status(404).json({ error: 'API endpoint không tồn tại', status: 404 }))
+
+// ── Global error handler (#14) ────────────────────────────────────────────────
+// Catches any unhandled errors thrown in route handlers
+app.use((err, req, res, _next) => {
+  console.error('❌ Unhandled error:', err.message || err)
+  const status = err.status || err.statusCode || 500
+  res.status(status).json({
+    error: err.message || 'Lỗi máy chủ nội bộ',
+    status,
+    ...(process.env.NODE_ENV !== 'production' && { stack: err.stack })
+  })
+})
+
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 async function start() {
@@ -111,15 +126,21 @@ async function start() {
 
   const geminiActive = (process.env.GEMINI_API_KEY || '').length > 10
 
-  app.listen(PORT, () => {
-    console.log(`\n🚀 NEU-CodeLens Skills Lab — Storm v4`)
-    console.log(`   🌐 http://localhost:${PORT}/api/health`)
-    console.log(`   🔧 http://localhost:${PORT}/api/system/check`)
-    console.log(`   📚 Routes: /auth /classrooms /assignments /submissions /profiles /chats /misconceptions`)
-    console.log(`   🗄️  Database: SQLite · 15 bài · 10 SV`)
-    console.log(`   🤖 Gemini Flash: ${geminiActive ? '✅ ACTIVE' : '⚠️  No key (rule-based only)'}`)
-    console.log(`   🧪 Test Runner (g++): ${gppStatus}\n`)
-  })
+  if (!process.env.VERCEL) {
+    app.listen(PORT, () => {
+      console.log(`\n🚀 NEU-CodeLens Skills Lab — Storm v4`)
+      console.log(`   🌐 http://localhost:${PORT}/api/health`)
+      console.log(`   🔧 http://localhost:${PORT}/api/system/check`)
+      console.log(`   📚 Routes: /auth /classrooms /assignments /submissions /profiles /chats /misconceptions`)
+      console.log(`   🗄️  Database: SQLite · 15 bài · 10 SV`)
+      console.log(`   🤖 Gemini Flash: ${geminiActive ? '✅ ACTIVE' : '⚠️  No key (rule-based only)'}`)
+      console.log(`   🧪 Test Runner (g++): ${gppStatus}\n`)
+    })
+  } else {
+    console.log('🚀 Running in Vercel Serverless environment (app.listen skipped)')
+  }
 }
 
 start().catch(err => { console.error('❌ Server startup error:', err); process.exit(1) })
+
+export default app

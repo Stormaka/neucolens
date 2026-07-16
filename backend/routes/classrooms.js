@@ -42,6 +42,13 @@ router.get('/:id', authenticate, (req, res) => {
 // GET /api/classrooms/:id/students — danh sách sinh viên + profiles (dynamic mastery)
 router.get('/:id/students', authenticate, requireRole('teacher'), (req, res) => {
   const db = getDb()
+  // #6: Pagination — default limit 50 (backward compat); future UI can pass ?limit=20&page=2
+  const page = Math.max(1, parseInt(req.query.page) || 1)
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50))
+  const offset = (page - 1) * limit
+
+  const total = db.prepare('SELECT COUNT(*) as c FROM enrollments WHERE classroom_id=?').get(req.params.id).c
+
   const students = db.prepare(`
     SELECT u.id, u.name, u.email, u.mssv,
       sp.mastery_json, sp.overall_score,
@@ -58,7 +65,8 @@ router.get('/:id/students', authenticate, requireRole('teacher'), (req, res) => 
     LEFT JOIN student_profiles sp ON u.id=sp.student_id AND sp.classroom_id=?
     WHERE e.classroom_id=?
     ORDER BY sp.overall_score DESC
-  `).all(req.params.id, req.params.id, req.params.id, req.params.id, req.params.id)
+    LIMIT ? OFFSET ?
+  `).all(req.params.id, req.params.id, req.params.id, req.params.id, req.params.id, limit, offset)
 
   // Aggregate classroom concepts from all assignments
   const classroomConcepts = db.prepare(
@@ -66,17 +74,24 @@ router.get('/:id/students', authenticate, requireRole('teacher'), (req, res) => 
   ).all(req.params.id).flatMap(r => { try { return JSON.parse(r.concepts_json) } catch { return [] } })
   const uniqueConcepts = [...new Set(classroomConcepts)]
 
-  res.json(students.map(s => ({
-    ...s,
-    strengths: JSON.parse(s.strengths_json || '[]'),
-    improvements: JSON.parse(s.improvements_json || '[]'),
-    misconceptions: JSON.parse(s.misconceptions_json || '[]'),
-    conceptMastery: (() => {
-      try { return JSON.parse(s.mastery_json || '{}') } catch { return {} }
-    })(),
-    classroomConcepts: uniqueConcepts
-  })))
+  const data = students.map(s => {
+    // #9/#10: Strip raw *_json blobs — expose only parsed values
+    const { mastery_json, strengths_json, improvements_json, misconceptions_json, ...sClean } = s
+    return {
+      ...sClean,
+      strengths: JSON.parse(s.strengths_json || '[]'),
+      improvements: JSON.parse(s.improvements_json || '[]'),
+      misconceptions: JSON.parse(s.misconceptions_json || '[]'),
+      conceptMastery: (() => {
+        try { return JSON.parse(s.mastery_json || '{}') } catch { return {} }
+      })(),
+      classroomConcepts: uniqueConcepts
+    }
+  })
+
+  res.json({ data, total, page, limit })
 })
+
 
 // GET /api/classrooms/:id/stats — thống kê tổng quan
 router.get('/:id/stats', authenticate, requireRole('teacher'), (req, res) => {

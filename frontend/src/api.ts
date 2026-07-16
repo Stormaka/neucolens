@@ -3,7 +3,10 @@
 import axios from 'axios'
 
 const API = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
+  baseURL: import.meta.env.VITE_API_URL || 
+    (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
+      ? '/api'
+      : 'http://localhost:3001/api')
 })
 
 API.interceptors.request.use(cfg => {
@@ -28,15 +31,24 @@ export const classrooms = {
   list: () => API.get('/classrooms') as Promise<any[]>,
   get: (id: number) => API.get(`/classrooms/${id}`) as Promise<any>,
   create: (data: any) => API.post('/classrooms', data) as Promise<any>,
-  students: (id: number) => API.get(`/classrooms/${id}/students`) as Promise<any[]>,
+  /** #6: Paginated. Returns flat array for backward compat (unwraps .data) */
+  students: (id: number, opts?: { page?: number; limit?: number }) => {
+    const params = opts ? `?page=${opts.page || 1}&limit=${opts.limit || 50}` : ''
+    return (API.get(`/classrooms/${id}/students${params}`) as Promise<any>).then(r => r.data ?? r)
+  },
   stats: (id: number) => API.get(`/classrooms/${id}/stats`) as Promise<any>,
   enroll: (id: number, studentEmail: string) => API.post(`/classrooms/${id}/enroll`, { studentEmail }) as Promise<any>,
 }
 
 export const assignments = {
-  byClassroom: (classId: number) => API.get(`/assignments/classroom/${classId}`) as Promise<any[]>,
+  /** #7: Paginated. Returns flat array for backward compat (unwraps .data) */
+  byClassroom: (classId: number, opts?: { page?: number; limit?: number }) => {
+    const params = opts ? `?page=${opts.page || 1}&limit=${opts.limit || 50}` : ''
+    return (API.get(`/assignments/classroom/${classId}${params}`) as Promise<any>).then(r => r.data ?? r)
+  },
   get: (id: number) => API.get(`/assignments/${id}`) as Promise<any>,
   create: (data: any) => API.post('/assignments', data) as Promise<any>,
+  update: (id: number, data: any) => API.patch(`/assignments/${id}`, data) as Promise<any>,
   setStatus: (id: number, status: string) => API.patch(`/assignments/${id}/status`, { status }) as Promise<any>,
   submissions: (id: number) => API.get(`/assignments/${id}/submissions`) as Promise<any[]>,
 }
@@ -44,7 +56,12 @@ export const assignments = {
 export const submissions = {
   submit: (assignment_id: number, code: string) => API.post('/submissions', { assignment_id, code }) as Promise<any>,
   poll: (id: number) => API.get(`/submissions/${id}`) as Promise<any>,
+  /** @deprecated use me() — kept for backward compat */
   my: (assignmentId: number) => API.get(`/submissions/my/${assignmentId}`) as Promise<any[]>,
+  me: (assignmentId: number) => API.get(`/submissions/me/${assignmentId}`) as Promise<any[]>,
+  /** #5/#15: Fetch latest submission for multiple assignments in one request.
+   *  Returns { [assignmentId]: submission } */
+  batchMy: (assignmentIds: number[]) => API.get(`/submissions/me/batch?assignmentIds=${assignmentIds.join(',')}`) as Promise<Record<number, any>>,
   byStudent: (studentId: number, classId: number) => API.get(`/submissions/student/${studentId}/classroom/${classId}`) as Promise<any[]>,
 }
 
