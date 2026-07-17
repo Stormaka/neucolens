@@ -20,7 +20,7 @@ router.post('/login', (req, res) => {
 
   // #18: 24h expiry (down from 7d). #19: no PII (name) in JWT payload
   const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: '24h' })
-  res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role, mssv: user.mssv } })
+  res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role, mssv: user.mssv, student_code: user.mssv } })
 })
 
 // POST /api/auth/register
