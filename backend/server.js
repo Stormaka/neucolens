@@ -10,7 +10,6 @@ import profilesRouter from './routes/profiles.js'
 import chatsRouter from './routes/chats.js'
 import misconceptionsRouter from './routes/misconceptions.js'
 import adminRouter from './routes/admin.js'
-import evaluationsRouter from './routes/evaluations.js'
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -118,7 +117,6 @@ app.use('/api/profile', profilesRouter)
 app.use('/api/chats', chatsRouter)
 app.use('/api/misconceptions', misconceptionsRouter)
 app.use('/api/admin', adminRouter)
-app.use('/api/evaluations', evaluationsRouter)
 
 // ── 404 handler ──────────────────────────────────────────────────────────────
 app.use('/api/*', (_, res) => res.status(404).json({ error: 'API endpoint không tồn tại', status: 404 }))

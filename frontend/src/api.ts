@@ -134,13 +134,6 @@ export const profiles = {
   ews: (classId: number) => API.get(`/profile/classroom/${classId}/ews`) as Promise<any>,
 }
 
-export const evaluations = {
-  getMetrics: (classroomId: number) => API.get(`/evaluations/metrics/classroom/${classroomId}`) as Promise<any>,
-  getExpertEvaluation: (submissionId: number) => API.get(`/evaluations/expert/submission/${submissionId}`) as Promise<any>,
-  saveExpertEvaluation: (data: any) => API.post('/evaluations/expert', data) as Promise<any>,
-  seedBenchmark: (classroomId: number) => API.post('/evaluations/seed-benchmark', { classroomId }) as Promise<any>,
-}
-
 export const system = {
   check: () => API.get('/system/check') as Promise<any>,
   health: () => API.get('/health') as Promise<any>,

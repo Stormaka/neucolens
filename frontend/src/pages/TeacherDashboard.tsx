@@ -5,7 +5,6 @@ import { useAuth } from '../AuthContext'
 import { classrooms, assignments, profiles, submissions, misconceptions, chats, system } from '../api'
 import { ConceptHeatmap, RadarChart, scoreColor, PROFILE_BADGE, STATUS_BADGE, Loader, useToast, avBg, avTx, fmtDate, SessionChart, CodeBlock, ConceptTagInput } from '../components/ui'
 import CodeGraph from '../components/CodeGraph'
-import ValidationTab from '../components/ValidationTab'
 
 export default function TeacherDashboard() {
   const { user, logout } = useAuth()
@@ -190,7 +189,7 @@ export default function TeacherDashboard() {
 
         {/* ── Tabs ── */}
         <div className="tabs" style={{ marginBottom: '24px' }}>
-          {[['overview', '📊 Tổng quan'], ['assignments', '📋 Bài tập'], ['students', '👥 Sinh viên'], ['misconceptions', '🧠 Ngộ nhận'], ['ews', '🚨 EWS & Cảnh báo'], ['validation', '🔬 Kiểm chứng 4 Yếu tố']].map(([id, lbl]) => (
+          {[['overview', '📊 Tổng quan'], ['assignments', '📋 Bài tập'], ['students', '👥 Sinh viên'], ['misconceptions', '🧠 Ngộ nhận'], ['ews', '🚨 EWS & Cảnh báo']].map(([id, lbl]) => (
             <button key={id} className={`tab ${activeTab === id ? 'active' : ''}`} onClick={() => setActiveTab(id)}>{lbl}</button>
           ))}
         </div>
@@ -962,11 +961,6 @@ export default function TeacherDashboard() {
               )}
             </div>
           </div>
-        )}
-
-        {/* ── TAB: VALIDATION ── */}
-        {activeTab === 'validation' && (
-          <ValidationTab classId={classId} asgns={asgns} students={students} />
         )}
       </div>
 
