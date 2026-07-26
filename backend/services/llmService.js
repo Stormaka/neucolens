@@ -8,6 +8,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import https from 'https'
+import crypto from 'crypto'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
 // ── Gemini Flash client ────────────────────────────────────────────────────────
@@ -182,8 +183,9 @@ async function runCppTestCases(code, testCases) {
   }
 
   const tmpDir = os.tmpdir()
-  const srcFile = path.join(tmpDir, `neu_code_${Date.now()}.cpp`)
-  const exeFile = path.join(tmpDir, `neu_code_${Date.now()}.exe`)
+  const randomSuffix = crypto.randomBytes(4).toString('hex')
+  const srcFile = path.join(tmpDir, `neu_code_${Date.now()}_${randomSuffix}.cpp`)
+  const exeFile = path.join(tmpDir, `neu_code_${Date.now()}_${randomSuffix}.exe`)
 
   let passCount = 0
   const errors = []
@@ -306,12 +308,25 @@ function detectGarbageCode(code, lang) {
   return { isGarbage: false, reason: '' }
 }
 
-// ── Tính điểm concept thực chất ───────────────────────────────────────────────
-function scoreConcept(concept, code) {
-  // Nested Loops: phải có >= 2 vòng lặp thực sự
+/**
+ * Helper: Strip comments and string literals to prevent fake keyword matches
+ */
+function cleanCodeForAnalysis(code) {
+  if (!code) return ''
+  let cleaned = code.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""')
+  cleaned = cleaned.replace(/\/\*[\s\S]*?\*\//g, '')
+  cleaned = cleaned.replace(/\/\/[^\n]*/g, '')
+  return cleaned
+}
+
+// ── Tính điểm concept thực chất (Hardened & Context-Aware) ───────────────────
+function scoreConcept(concept, rawCode) {
+  const cleanedCode = cleanCodeForAnalysis(rawCode)
+
+  // Nested Loops: phải có >= 2 vòng lặp thực sự với body
   if (concept === 'Nested Loops') {
-    const forCount = (code.match(/for\s*\(/g) || []).length
-    const whileCount = (code.match(/while\s*\(/g) || []).length
+    const forCount = (cleanedCode.match(/for\s*\([^)]*\)\s*\{[^}]*\}/g) || []).length
+    const whileCount = (cleanedCode.match(/while\s*\([^)]*\)\s*\{[^}]*\}/g) || []).length
     const total = forCount + whileCount
     if (total >= 2) return 100
     if (total === 1) return 30
@@ -320,99 +335,120 @@ function scoreConcept(concept, code) {
 
   // Recursion: hàm phải gọi lại chính mình
   if (concept === 'Recursion') {
-    const fnDefs = [...code.matchAll(/\b(\w{3,})\s*\([^)]*\)\s*\{/g)]
+    const fnDefs = [...cleanedCode.matchAll(/\b(\w{3,})\s*\([^)]*\)\s*\{/g)]
     const fnNames = fnDefs.map(m => m[1]).filter(n => !['main', 'while', 'for', 'if'].includes(n))
     const hasRecursion = fnNames.some(fn => {
       const escaped = fn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      const matches = (code.match(new RegExp(`\\b${escaped}\\s*\\(`, 'g')) || []).length
-      return matches >= 2 // khai báo + gọi lại
+      const matches = (cleanedCode.match(new RegExp(`\\b${escaped}\\s*\\(`, 'g')) || []).length
+      return matches >= 2
     })
     return hasRecursion ? 100 : 0
   }
 
-  // Arrays: chỉ tính nếu khai báo mảng thực sự
+  // Arrays: chỉ tính nếu khai báo mảng thực sự và truy cập chỉ mục
   if (concept === 'Arrays') {
-    const hasArrayDecl = /\b(int|double|float|char|string)\s+\w+\s*\[\d*\]/.test(code)
-    const hasVectorDecl = /\b(?:std::)?vector\s*<[^>]+>\s+\w+/.test(code)
-    const hasIndexAccess = /\w+\s*\[\s*\w+\s*\]/.test(code)
-    const hasRangeIteration = /for\s*\([^:]+:\s*\w+\s*\)/.test(code)
+    const hasArrayDecl = /\b(int|double|float|char|string)\s+\w+\s*\[\d+\]/.test(cleanedCode)
+    const hasVectorDecl = /\b(?:std::)?vector\s*<[^>]+>\s+\w+/.test(cleanedCode)
+    const hasIndexAccess = /\w+\s*\[\s*\w+\s*\]/.test(cleanedCode)
+    const hasRangeIteration = /for\s*\([^:]+:\s*\w+\s*\)/.test(cleanedCode)
     if ((hasArrayDecl || hasVectorDecl) && (hasIndexAccess || hasRangeIteration)) return 100
     if (hasArrayDecl || hasVectorDecl || hasIndexAccess) return 60
     return 0
   }
 
-  // Variables: phải có khai báo rõ ràng
+  // Variables: phải khai báo biến thực sự có sử dụng
   if (concept === 'Variables') {
-    const declCount = (code.match(/\b(int|double|float|char|string|bool|long)\s+\w+/g) || []).length
-    if (declCount >= 2) return 100
-    if (declCount === 1) return 60
+    const decls = [...cleanedCode.matchAll(/\b(int|double|float|char|string|bool|long)\s+([a-zA-Z_]\w*)/g)]
+    const validDecls = decls.filter(m => m[2] !== 'main')
+    if (validDecls.length >= 2) return 100
+    if (validDecls.length === 1) return 60
     return 0
   }
 
-  // Sorting: phải có swap pattern (biến tạm + gán)
+  // Sorting: phải có swap pattern thực sự hoặc std::sort
   if (concept === 'Sorting Algorithm') {
-    const hasLibrarySort = /\b(?:std::)?sort\s*\(/.test(code)
+    const hasLibrarySort = /\b(?:std::)?sort\s*\(/.test(cleanedCode)
     if (hasLibrarySort) return 100
-    const hasTemp = /\b(int|double|float|char)\s+t\s*=|\btemp\s*=|\bswap\s*\(/.test(code)
-    const hasLoop = /for\s*\(/.test(code)
-    const hasNestedLoop = (code.match(/for\s*\(/g) || []).length >= 2
+    const hasTemp = /\b(int|double|float|char)\s+t\s*=|\btemp\s*=|\bswap\s*\(/.test(cleanedCode)
+    const hasLoop = /for\s*\(/.test(cleanedCode)
+    const hasNestedLoop = (cleanedCode.match(/for\s*\(/g) || []).length >= 2
     if (hasNestedLoop && hasTemp) return 100
     if (hasTemp && hasLoop) return 70
     if (hasTemp) return 40
     return 0
   }
 
-  // Conditionals: phải có if/else thực sự
+  // Conditionals: phải có if/else với body chứa câu lệnh thực sự (chống lách if(){} else{})
   if (concept === 'Conditionals') {
-    const hasIf = /\bif\s*\(/.test(code)
-    const hasElse = /\belse\b/.test(code)
-    const hasElseIf = /else\s+if\s*\(/.test(code)
-    if (hasElseIf) return 100
-    if (hasIf && hasElse) return 85
-    if (hasIf) return 50
+    const ifBlocks = [...cleanedCode.matchAll(/\bif\s*\(([^)]+)\)\s*\{([^}]*)\}/g)]
+    const activeIfs = ifBlocks.filter(m => {
+      const cond = m[1].trim()
+      const body = m[2].trim()
+      if (['true', '1', '0', 'false'].includes(cond)) return false
+      return body.length > 0 && body !== ';'
+    })
+    const hasElse = /\belse\b/.test(cleanedCode)
+    const hasElseIf = /else\s+if\s*\(/.test(cleanedCode)
+
+    if (hasElseIf && activeIfs.length > 0) return 100
+    if (hasElse && activeIfs.length > 0) return 85
+    if (activeIfs.length > 0) return 50
     return 0
   }
 
-  // Functions: phải có định nghĩa hàm ngoài main
+  // Functions: phải có định nghĩa hàm thực sự có thân lệnh hoặc tham số (chống void a(){} void b(){})
   if (concept === 'Functions') {
-    const funcDefs = [...code.matchAll(/\b(void|int|double|float|bool|string)\s+(\w+)\s*\([^)]*\)\s*\{/g)]
+    const funcDefs = [...cleanedCode.matchAll(/\b(void|int|double|float|bool|string)\s+(\w+)\s*\(([^)]*)\)\s*\{([^}]*)\}/g)]
     const nonMain = funcDefs.filter(m => m[2] !== 'main')
-    if (nonMain.length >= 2) return 100
-    if (nonMain.length === 1) return 80
-    if (funcDefs.length >= 1) return 30
+    
+    if (!nonMain.length) return 0
+
+    const activeFuncs = nonMain.filter(m => {
+      const name = m[2]
+      const params = m[3].trim()
+      const body = m[4].trim()
+      if (!body && !params) return false // Hàm rỗng không tham số -> rác
+      const callMatches = (cleanedCode.match(new RegExp(`\\b${name}\\s*\\(`, 'g')) || []).length
+      return callMatches >= 2 || body.includes('return') || params.length > 0
+    })
+
+    if (activeFuncs.length >= 2) return 100
+    if (activeFuncs.length === 1) return 80
     return 0
   }
 
-  // I/O: cin + cout cả 2
+  // I/O: cin >> var VÀ cout << expr
   if (concept === 'I/O') {
-    const hasCin = /\bcin\s*>>/.test(code)
-    const hasCout = /\bcout\s*<</.test(code)
-    const hasPrompt = /cout\s*<<\s*"/.test(code)
+    const hasCin = /\bcin\s*>>\s*[a-zA-Z_]\w*/.test(cleanedCode)
+    const hasCout = /\bcout\s*<</.test(cleanedCode)
+    const hasPrompt = /cout\s*<<\s*""/.test(cleanedCode) || /cout\s*<<\s*"[^"]*"/.test(rawCode)
     if (hasCin && hasCout && hasPrompt) return 100
     if (hasCin && hasCout) return 80
     if (hasCin || hasCout) return 40
     return 0
   }
 
-  // Loops: phải có vòng lặp thực sự với body
+  // Loops: phải có vòng lặp với body thực sự (chống for(;;){})
   if (concept === 'Loops') {
-    const hasFor = /for\s*\([^)]+\)\s*\{/.test(code) || /for\s*\([^)]+\)\s*\w+/.test(code)
-    const hasWhile = /while\s*\([^)]+\)\s*\{/.test(code)
-    if (hasFor && hasWhile) return 100
-    if (hasFor || hasWhile) return 80
+    const forMatches = [...cleanedCode.matchAll(/\bfor\s*\([^)]*\)\s*\{([^}]*)\}/g)]
+    const whileMatches = [...cleanedCode.matchAll(/\bwhile\s*\([^)]*\)\s*\{([^}]*)\}/g)]
+    const hasActiveFor = forMatches.some(m => m[1].trim().length > 0)
+    const hasActiveWhile = whileMatches.some(m => m[1].trim().length > 0)
+
+    if (hasActiveFor && hasActiveWhile) return 100
+    if (hasActiveFor || hasActiveWhile) return 80
     return 0
   }
 
-  // Generic: keyword matching nhưng nghiêm ngặt hơn
+  // Generic Concept Keyword Matching: quét trên cleanedCode (đã strip comment & string)
   const keywords = CONCEPT_KEYWORDS[concept] || [concept.toLowerCase()]
   if (keywords.length === 0) return 0
 
   let hits = 0
   keywords.forEach(kw => {
-    if (code.toLowerCase().includes(kw.toLowerCase())) hits++
+    if (cleanedCode.toLowerCase().includes(kw.toLowerCase())) hits++
   })
 
-  // KHÔNG có điểm cơ bản — phải match thực sự
   const ratio = hits / keywords.length
   if (ratio === 0) return 0
   if (ratio <= 0.25) return 20
@@ -688,48 +724,95 @@ function buildFeedback({ code, status, total, t1, t2, t3, maxT1, maxT2, maxT3,
 
 // ── Detection helpers ─────────────────────────────────────────────────────────
 
+// ── Detection helpers (Fixed False Positives) ───────────────────────────
+
 function detectInfiniteLoop(code) {
-  // Tìm while blocks thực sự (có ngoặc)
-  const whileBlocks = code.match(/while\s*\([^)]+\)\s*\{([^}]*)\}/gs) || []
-  for (const block of whileBlocks) {
-    const body = block.replace(/while\s*\([^)]+\)\s*\{/, '').replace(/\}$/, '')
-    if (!/\+\+|--|[\+\-\*\/]=/. test(body)) return true
+  const cleaned = cleanCodeForAnalysis(code)
+
+  // 1. Check while loops without increment/update
+  const whileBlocks = [...cleaned.matchAll(/\bwhile\s*\([^)]+\)\s*\{([^}]*)\}/g)]
+  for (const match of whileBlocks) {
+    const body = match[1]
+    if (!/\+\+|--|[\+\-\*\/]=|\bbreak\b|\breturn\b/.test(body)) return true
   }
+
+  // 2. Check for(;;) or infinite for loops without update
+  const infiniteFor = /\bfor\s*\(\s*;\s*;\s*\)/.test(cleaned) || /\bfor\s*\([^;]*;\s*[^;]*;\s*\)\s*\{([^}]*)\}/.test(cleaned)
+  if (infiniteFor) {
+    const forBlocks = [...cleaned.matchAll(/\bfor\s*\([^;]*;\s*([^;]*);\s*\)\s*\{([^}]*)\}/g)]
+    for (const match of forBlocks) {
+      const cond = match[1].trim()
+      const body = match[2]
+      if (cond && !/\+\+|--|[\+\-\*\/]=|\bbreak\b|\breturn\b/.test(body)) return true
+    }
+  }
+
   return false
 }
 
 function detectOffByOne(code, concepts) {
-  const arrConcepts = ['Arrays', 'Linear Search', 'Sorting Algorithm', 'Nested Loops']
+  const arrConcepts = ['Arrays', 'Linear Search', 'Sorting Algorithm']
+  // Only check off-by-one IF assignment involves Array indexing
   if (!concepts.some(c => arrConcepts.includes(c))) return false
-  return /for\s*\([^)]*;\s*\w+\s*<=\s*n\s*;/.test(code)
+
+  const cleaned = cleanCodeForAnalysis(code)
+  // Check if code has array indexing access like a[i] inside for (int i = 0; i <= n; i++)
+  const hasZeroStartLoop = /for\s*\(\s*int\s+(\w+)\s*=\s*0\s*;\s*\1\s*<=\s*(\w+)\s*;/.test(cleaned)
+  const hasArrayIndexWithLoopVar = /\w+\s*\[\s*[a-zA-Z_]\w*\s*\]/.test(cleaned)
+
+  return hasZeroStartLoop && hasArrayIndexWithLoopVar
 }
 
-function detectMultipleIfChain(code) {
-  const lines = code.split('\n').filter(l => /^\s*if\s*\(/.test(l))
-  return lines.length >= 3 && !code.includes('else if')
+function detectMultipleIfChain(code, concepts) {
+  // Only check multiple if chain IF assignment involves grade/score Classification
+  if (!concepts.includes('Conditionals')) return false
+
+  const cleaned = cleanCodeForAnalysis(code)
+  const lines = cleaned.split('\n').filter(l => /^\s*if\s*\(/.test(l))
+  
+  // Check if multiple independent ifs test the SAME variable (e.g. if (d >= 8) ... if (d >= 6.5))
+  if (lines.length >= 3 && !cleaned.includes('else if')) {
+    const varsTested = lines.map(l => l.match(/if\s*\(\s*([a-zA-Z_]\w*)/)?.[1]).filter(Boolean)
+    const uniqueVars = new Set(varsTested)
+    // Same variable tested 3+ times independently -> classification misconception
+    if (uniqueVars.size === 1) return true
+  }
+
+  return false
 }
 
 function detectAIGenerated(code, concepts, lang) {
   const signals = []
   let confidence = 0.05
+  const cleaned = cleanCodeForAnalysis(code)
 
   if (lang === 'C++') {
-    if (/std::vector|vector</.test(code)) { signals.push('std::vector (chưa học)'); confidence += 0.35 }
-    if (/\[.*\]\s*\(/.test(code)) { signals.push('Lambda'); confidence += 0.3 }
-    if (/\bauto\b/.test(code)) { signals.push('auto keyword'); confidence += 0.2 }
-    if (/l\s*\+\s*\(r\s*-\s*l\)/.test(code)) { signals.push('Binary search tối ưu'); confidence += 0.3 }
+    // Only flag std::vector or lambda if NOT part of assignment concepts (e.g. Week 15 explicitly uses vector & sort)
+    const conceptsIncludeVectorOrSort = concepts.some(c => ['Arrays', 'Sorting Algorithm', 'OOP'].includes(c))
+
+    if (!conceptsIncludeVectorOrSort && /std::vector|vector</.test(cleaned)) {
+      signals.push('std::vector (chưa học)')
+      confidence += 0.25
+    }
+    if (/\[.*\]\s*\(/.test(cleaned)) {
+      signals.push('Lambda')
+      confidence += 0.25
+    }
+    if (!conceptsIncludeVectorOrSort && /\bauto\b/.test(cleaned)) {
+      signals.push('auto keyword')
+      confidence += 0.15
+    }
+    if (/l\s*\+\s*\(r\s*-\s*l\)/.test(cleaned)) {
+      signals.push('Binary search tối ưu')
+      confidence += 0.25
+    }
   }
 
   const academicComments = (code.match(/\/\/.*(?:O\(|Time complexity|Space O\(|Algorithm:)/gi) || []).length
   if (academicComments >= 2) { signals.push('Academic comments'); confidence += 0.15 }
 
-  // Code quá hoàn hảo so với level sinh viên
-  if (code.split('\n').filter(l => l.trim().startsWith('//')).length >= 5) {
-    signals.push('Quá nhiều comment học thuật'); confidence += 0.1
-  }
-
   confidence = Math.min(confidence, 0.98)
-  return { flag: confidence > 0.65, confidence, reason: signals.join('; ') }
+  return { flag: confidence > 0.70, confidence, reason: signals.join('; ') }
 }
 
 /**

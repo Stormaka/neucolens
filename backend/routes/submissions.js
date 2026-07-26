@@ -159,6 +159,31 @@ router.get('/student/:studentId/classroom/:classId', authenticate, (req, res) =>
   res.json(Object.values(grouped))
 })
 
+// PATCH /api/submissions/:id/override — Giảng viên sửa điểm tay khi cần
+router.patch('/:id/override', authenticate, requireRole('teacher'), (req, res) => {
+  const db = getDb()
+  const { score_total, score_t1, score_t2, score_t3, status, llm_feedback } = req.body
+  const sub = db.prepare('SELECT * FROM submissions WHERE id=?').get(req.params.id)
+  if (!sub) return res.status(404).json({ error: 'Không tìm thấy submission', status: 404 })
+
+  const newTotal = score_total !== undefined ? Number(score_total) : sub.score_total
+  const newT1 = score_t1 !== undefined ? Number(score_t1) : sub.score_t1
+  const newT2 = score_t2 !== undefined ? Number(score_t2) : sub.score_t2
+  const newT3 = score_t3 !== undefined ? Number(score_t3) : sub.score_t3
+  const newStatus = status || (newTotal >= 70 ? 'passed' : newTotal >= 50 ? 'warning' : 'failed')
+  const newFeedback = llm_feedback !== undefined ? llm_feedback : sub.llm_feedback
+
+  db.prepare(`
+    UPDATE submissions
+    SET score_total=?, score_t1=?, score_t2=?, score_t3=?, status=?, llm_feedback=?
+    WHERE id=?
+  `).run(newTotal, newT1, newT2, newT3, newStatus, newFeedback, req.params.id)
+
+  const updated = db.prepare('SELECT * FROM submissions WHERE id=?').get(req.params.id)
+  const { misconceptions_json, ...clean } = updated
+  res.json({ ...clean, misconceptions: JSON.parse(misconceptions_json || '[]') })
+})
+
 // GET /api/submissions/:id — polling result (must be after named routes)
 router.get('/:id', authenticate, (req, res) => {
   const db = getDb()
