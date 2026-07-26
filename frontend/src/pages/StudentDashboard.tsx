@@ -15,6 +15,134 @@ const PIPE_STEPS = [
   { i: '💾', n: 'Cập nhật Hồ sơ', d: 'Merge kết quả vào student profile' },
 ]
 
+// ── Assignment Detail Modal ────────────────────────────────────────────────────
+function AssignmentModal({ asgn, sub, onClose, onSubmit, onChat, onViewResult }) {
+  if (!asgn) return null
+  const isOpen = asgn.status === 'open'
+  const hasSub = !!sub
+  const sb = sub ? (STATUS_BADGE[sub.status] || STATUS_BADGE.pending) : null
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 1000,
+      background: 'rgba(0,0,0,.72)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: '16px',
+      backdropFilter: 'blur(6px)',
+    }} onClick={onClose}>
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: 'var(--bg1)',
+          border: '1px solid var(--b2)',
+          borderRadius: 'var(--r20)',
+          width: '100%',
+          maxWidth: '580px',
+          maxHeight: '90vh',
+          overflow: 'auto',
+          padding: '28px 28px 24px',
+          boxShadow: '0 24px 60px rgba(0,0,0,.6)',
+          animation: 'fadeInUp .25s ease both',
+        }}
+      >
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '20px' }}>
+          <div>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
+              <span className={`badge ${isOpen ? 'bdr' : 'bdn'}`}>{isOpen ? '🟢 Đang mở' : '⚫ Đã đóng'}</span>
+              {sb && <span className={`badge ${sb.c}`}>{sb.i} {sb.l}</span>}
+              {sub?.ai_suspicion_flag ? <span className="badge bdy">🤖 AI Warning</span> : null}
+            </div>
+            <div style={{ fontWeight: 800, fontSize: '1.05rem', fontFamily: 'var(--display)', lineHeight: 1.35 }}>{asgn.title}</div>
+          </div>
+          <button className="btn btn-ghost btn-sm" style={{ flexShrink: 0 }} onClick={onClose}>✕</button>
+        </div>
+
+        {/* Details */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* Description */}
+          <div style={{ background: 'var(--bg3)', borderRadius: 'var(--r12)', padding: '14px 16px' }}>
+            <div style={{ fontSize: '.68rem', fontWeight: 700, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '8px' }}>📖 Mô tả bài tập</div>
+            <div style={{ fontSize: '.88rem', lineHeight: 1.75, color: 'var(--t1)', whiteSpace: 'pre-wrap' }}>{asgn.description || 'Không có mô tả.'}</div>
+          </div>
+
+          {/* Meta info: deadline, lang */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <div style={{ background: 'var(--bg3)', borderRadius: 'var(--r10)', padding: '12px 14px' }}>
+              <div style={{ fontSize: '.68rem', fontWeight: 700, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '4px' }}>🗓 Deadline</div>
+              <div style={{ fontWeight: 600, fontSize: '.88rem' }}>{fmtDate(asgn.deadline)}</div>
+            </div>
+            <div style={{ background: 'var(--bg3)', borderRadius: 'var(--r10)', padding: '12px 14px' }}>
+              <div style={{ fontSize: '.68rem', fontWeight: 700, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '4px' }}>💻 Ngôn ngữ</div>
+              <div style={{ fontWeight: 600, fontSize: '.88rem' }}>{asgn.lang || 'C++'}</div>
+            </div>
+          </div>
+
+          {/* Concepts */}
+          {(asgn.concepts || []).length > 0 && (
+            <div style={{ background: 'var(--bg3)', borderRadius: 'var(--r10)', padding: '12px 14px' }}>
+              <div style={{ fontSize: '.68rem', fontWeight: 700, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: '8px' }}>🧠 Khái niệm kiểm tra</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {(asgn.concepts || []).map((c: string) => (
+                  <span key={c} className="badge bdp">{CON_EM[c]} {CON_LBL[c] || c}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Latest result summary */}
+          {sub && (
+            <div style={{
+              background: sub.status === 'passed' ? 'rgba(16,185,129,.08)' : sub.status === 'failed' ? 'rgba(229,62,62,.08)' : 'rgba(251,191,36,.08)',
+              border: `1px solid ${sub.status === 'passed' ? 'rgba(52,211,153,.3)' : sub.status === 'failed' ? 'rgba(248,113,113,.3)' : 'rgba(251,191,36,.3)'}`,
+              borderRadius: 'var(--r12)', padding: '14px 16px',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <div style={{ fontSize: '.68rem', fontWeight: 700, color: 'var(--t3)', textTransform: 'uppercase', letterSpacing: '.06em' }}>📊 Kết quả lần nộp gần nhất</div>
+                <div style={{ fontFamily: 'var(--display)', fontWeight: 900, fontSize: '1.5rem', color: scoreColor(sub.score_total) }}>{sub.score_total}<span style={{ fontSize: '.75rem', fontWeight: 400, color: 'var(--t3)' }}>/100</span></div>
+              </div>
+              {sub.llm_feedback && (
+                <div style={{ fontSize: '.8rem', color: 'var(--t2)', lineHeight: 1.6 }}>
+                  {sub.llm_feedback.substring(0, 220)}{sub.llm_feedback.length > 220 ? '...' : ''}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Action buttons */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '22px' }}>
+          {/* AI Chat always available */}
+          <button className="btn btn-secondary" style={{ width: '100%', justifyContent: 'center', fontSize: '.9rem', padding: '11px' }} onClick={() => { onClose(); onChat() }}>
+            💬 Hỏi AI trợ giảng về bài này
+          </button>
+
+          {/* View result if has submission */}
+          {hasSub && (
+            <button className="btn btn-ghost" style={{ width: '100%', justifyContent: 'center', fontSize: '.9rem', padding: '11px' }} onClick={() => { onClose(); onViewResult() }}>
+              📊 Xem kết quả chi tiết
+            </button>
+          )}
+
+          {/* Submit / Re-submit only if open */}
+          {isOpen && (
+            <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', fontSize: '.95rem', padding: '13px', fontWeight: 700 }} onClick={() => { onClose(); onSubmit() }}>
+              {hasSub ? '🔄 Nộp lại' : '🚀 Nộp bài'}
+            </button>
+          )}
+
+          {/* Closed notice */}
+          {!isOpen && (
+            <div style={{ textAlign: 'center', fontSize: '.8rem', color: 'var(--t3)', padding: '8px', background: 'var(--bg3)', borderRadius: 'var(--r8)' }}>
+              🔒 Bài tập đã đóng — không thể nộp thêm
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function StudentDashboard() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
@@ -32,6 +160,7 @@ export default function StudentDashboard() {
   const [subResult, setSubResult] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [classId, setClassId] = useState<number | null>(null)
+  const [modalAsgn, setModalAsgn] = useState<any>(null)
 
   useEffect(() => { loadData() }, [])
 
@@ -44,7 +173,6 @@ export default function StudentDashboard() {
       setAsgns(asgnList); setMyProfile(prof)
       if (asgnList.length > 0) setSelAsgn(asgnList.find((a: any) => a.status === 'open') || asgnList[asgnList.length - 1])
 
-      // #25: Batch fetch all submissions in 1 request instead of N separate requests
       if (asgnList.length > 0) {
         const ids = asgnList.map((a: any) => a.id)
         const subsMap = await submissions.batchMy(ids)
@@ -61,31 +189,23 @@ export default function StudentDashboard() {
     setPipeState(PIPE_STEPS.map(() => 'idle'))
     try {
       const res = await submissions.submit(selAsgn.id, code)
-      const subId = res.id
-      for (let i = 0; i < PIPE_STEPS.length; i++) {
-        setPipeState(s => s.map((x, j) => j === i ? 'active' : x))
-        await new Promise(r => setTimeout(r, 900 + Math.random() * 400))
-        setPipeState(s => s.map((x, j) => j === i ? 'done' : x))
-      }
-      let result: any = null
-      for (let t = 0; t < 15; t++) {
-        await new Promise(r => setTimeout(r, 500))
-        try {
-          result = await submissions.poll(subId)
-          if (result.status !== 'pending') break
-        } catch { break }
-      }
-      setSubResult(result)
+      setPipeState(PIPE_STEPS.map(() => 'done'))
+      setSubResult(res)
       toast('Phân tích hoàn tất!')
-      const subs = await submissions.my(selAsgn.id)
+      const subs = await submissions.me(selAsgn.id)
       setMySubs(prev => ({ ...prev, [selAsgn.id]: subs?.[0] }))
       const prof = await profiles.me(classId || undefined)
       setMyProfile(prof)
-    } catch (e: any) { toast(e.error || 'Lỗi nộp bài', true) }
+    } catch (e: any) { toast(e.message || 'Lỗi nộp bài', true) }
     finally { setSubmitting(false) }
   }
 
-  if (loading) return <div style={{ minHeight: '100vh', background: 'var(--bg0)', display: 'flex' }}><Loader /></div>
+  if (loading) return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg0)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '16px' }}>
+      <div style={{ width: 44, height: 44, border: '3px solid var(--rg)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.9s linear infinite' }} />
+      <div style={{ color: 'var(--t3)', fontSize: '.88rem' }}>Đang tải dữ liệu...</div>
+    </div>
+  )
 
   const pb = myProfile ? (PROFILE_BADGE[myProfile.profile_type] || PROFILE_BADGE['on-track']) : PROFILE_BADGE['on-track']
   const passCount = Object.values(mySubs).filter((s: any) => s?.status === 'passed').length
@@ -93,6 +213,18 @@ export default function StudentDashboard() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg0)', display: 'flex', flexDirection: 'column' }}>
       <ToastContainer />
+
+      {/* Assignment Detail Modal */}
+      {modalAsgn && (
+        <AssignmentModal
+          asgn={modalAsgn}
+          sub={mySubs[modalAsgn.id]}
+          onClose={() => setModalAsgn(null)}
+          onChat={() => navigate(`/chat?asgnId=${modalAsgn.id}`)}
+          onSubmit={() => { setSelAsgn(modalAsgn); setSubResult(null); setPipeState(PIPE_STEPS.map(() => 'idle')); setActiveTab('submit') }}
+          onViewResult={() => { setSelAsgn(modalAsgn); setActiveTab('submit') }}
+        />
+      )}
 
       {/* ── Nav ── */}
       <nav className="nav">
@@ -129,16 +261,10 @@ export default function StudentDashboard() {
             Xin chào, {user?.name?.split(' ').pop()} 👋
           </h1>
           <p style={{ color: 'var(--t2)', fontSize: '.85rem' }}>Theo dõi tiến trình học lập trình của bạn qua từng buổi</p>
-
-          <div style={{ marginTop: '14px' }}>
-            <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/chat${selAsgn ? `?asgnId=${selAsgn.id}` : ''}`)}>
-              💬 Hỏi đáp AI về bài tập
-            </button>
-          </div>
         </div>
 
         {/* ── Quick Stats ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px', marginBottom: '24px' }} className="animate-fade-in-up">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '14px', marginBottom: '24px' }} className="animate-fade-in-up">
           {[
             { v: `${passCount}/${asgns.length}`, c: 'var(--gn)', l: 'Buổi Pass', i: '✅' },
             { v: myProfile?.overall_score || 0, c: scoreColor(myProfile?.overall_score || 0), l: 'Điểm TB', i: '🎯' },
@@ -171,58 +297,103 @@ export default function StudentDashboard() {
               </div>
               {asgns.map((a) => {
                 const sub = mySubs[a.id]
-                const sb = sub ? (STATUS_BADGE[sub.status] || STATUS_BADGE.pending) : STATUS_BADGE.pending
+                const sb = sub ? (STATUS_BADGE[sub.status] || STATUS_BADGE.pending) : null
+                const isOpen = a.status === 'open'
+                const scoreDisplay = sub ? `${sub.score_total}/100` : null
+
                 return (
                   <div key={a.id} className="card card-sm" style={{
                     marginBottom: '12px',
-                    borderColor: a.status === 'open' ? 'var(--rg)' : undefined,
-                    background: a.status === 'open' ? 'var(--rg3)' : undefined,
+                    borderColor: isOpen ? 'var(--rg)' : undefined,
+                    background: isOpen ? 'var(--rg3)' : undefined,
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '14px' }}>
-                      <div style={{ flex: 1 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        {/* Badges row */}
                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '7px' }}>
-                          <span className={`badge ${a.status === 'open' ? 'bdr' : 'bdn'}`}>{a.status === 'open' ? '🟢 Đang mở' : '⚫ Đã đóng'}</span>
-                          <span className={`badge ${sb.c}`}>{sb.i} {sb.l}</span>
+                          <span className={`badge ${isOpen ? 'bdr' : 'bdn'}`}>{isOpen ? '🟢 Đang mở' : '⚫ Đã đóng'}</span>
+                          {sb
+                            ? <span className={`badge ${sb.c}`}>{sb.i} {sb.l}</span>
+                            : <span className="badge bdn" style={{ opacity: .7 }}>📭 Chưa nộp</span>
+                          }
                           {sub?.ai_suspicion_flag ? <span className="badge bdy">🤖 AI Warning</span> : null}
                         </div>
-                        <div style={{ fontWeight: 700, fontSize: '.9rem', marginBottom: '4px' }}>{a.title}</div>
-                        <div style={{ fontSize: '.78rem', color: 'var(--t2)' }}>{(a.description?.length || 0) > 90 ? a.description.substring(0, 90) + '...' : a.description}</div>
-                        <div style={{ fontSize: '.7rem', color: 'var(--t3)', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+
+                        <div style={{ fontWeight: 700, fontSize: '.92rem', marginBottom: '4px' }}>{a.title}</div>
+                        <div style={{ fontSize: '.78rem', color: 'var(--t2)', lineHeight: 1.5 }}>
+                          {(a.description?.length || 0) > 90 ? a.description.substring(0, 90) + '…' : a.description}
+                        </div>
+                        <div style={{ fontSize: '.72rem', color: 'var(--t3)', marginTop: '6px' }}>
                           🗓 DL: {fmtDate(a.deadline)}
+                          {sub && <span style={{ marginLeft: '10px', color: scoreColor(sub.score_total) }}>· Điểm gần nhất: <b>{scoreDisplay}</b></span>}
+                          {!sub && <span style={{ marginLeft: '10px', color: 'var(--t4)' }}>· Chưa nộp</span>}
                         </div>
                       </div>
-                      <div style={{ textAlign: 'center', flexShrink: 0 }}>
-                        <div style={{
-                          width: '56px', height: '56px',
-                          borderRadius: '50%',
-                          background: `conic-gradient(${scoreColor(sub?.score_total || 0)} ${((sub?.score_total || 0) / 100) * 360}deg, var(--bg4) 0deg)`,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          position: 'relative',
-                        }}>
+
+                      {/* Action buttons column */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', flexShrink: 0, alignItems: 'stretch', minWidth: '100px' }}>
+                        {/* Score circle */}
+                        {sub && (
                           <div style={{
-                            width: '42px', height: '42px',
+                            width: '54px', height: '54px',
                             borderRadius: '50%',
-                            background: 'var(--bg2)',
-                            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                            background: `conic-gradient(${scoreColor(sub.score_total)} ${((sub.score_total) / 100) * 360}deg, var(--bg4) 0deg)`,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            alignSelf: 'center',
                           }}>
-                            <span style={{ fontSize: '1.1rem', fontWeight: 900, fontFamily: 'var(--display)', color: scoreColor(sub?.score_total || 0), lineHeight: 1 }}>
-                              {sub?.score_total || '—'}
-                            </span>
+                            <div style={{
+                              width: '40px', height: '40px', borderRadius: '50%',
+                              background: 'var(--bg2)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}>
+                              <span style={{ fontSize: '1rem', fontWeight: 900, fontFamily: 'var(--display)', color: scoreColor(sub.score_total), lineHeight: 1 }}>
+                                {sub.score_total}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                        {a.status === 'open' && (
-                          <button className="btn btn-primary btn-sm" style={{ marginTop: '8px', fontSize: '.72rem' }} onClick={() => { setSelAsgn(a); setActiveTab('submit') }}>
-                            📤 Nộp
+                        )}
+
+                        {/* Xem đề */}
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{ whiteSpace: 'nowrap', justifyContent: 'center', fontSize: '.76rem' }}
+                          onClick={() => setModalAsgn(a)}
+                        >
+                          📄 Xem đề
+                        </button>
+
+                        {/* Chat AI */}
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{ whiteSpace: 'nowrap', justifyContent: 'center', fontSize: '.76rem' }}
+                          onClick={() => navigate(`/chat?asgnId=${a.id}`)}
+                        >
+                          💬 Hỏi AI
+                        </button>
+
+                        {/* Nộp / Nộp lại (only if open) */}
+                        {isOpen && (
+                          <button
+                            className="btn btn-primary btn-sm"
+                            style={{ whiteSpace: 'nowrap', justifyContent: 'center', fontSize: '.78rem', fontWeight: 700 }}
+                            onClick={() => { setSelAsgn(a); setSubResult(null); setPipeState(PIPE_STEPS.map(() => 'idle')); setActiveTab('submit') }}
+                          >
+                            {sub ? '🔄 Nộp lại' : '🚀 Nộp bài'}
+                          </button>
+                        )}
+
+                        {/* Xem kết quả (if has submission) */}
+                        {sub && (
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            style={{ whiteSpace: 'nowrap', justifyContent: 'center', fontSize: '.76rem' }}
+                            onClick={() => { setSelAsgn(a); setActiveTab('submit') }}
+                          >
+                            📊 Kết quả
                           </button>
                         )}
                       </div>
                     </div>
-                    {sub?.llm_feedback && (
-                      <div style={{ marginTop: '12px', padding: '10px 13px', background: 'var(--bg3)', borderRadius: 'var(--r8)', borderLeft: `3px solid ${sub.status === 'passed' ? '#34d399' : sub.status === 'failed' ? '#f87171' : '#fbbf24'}` }}>
-                        <div style={{ fontSize: '.63rem', fontWeight: 700, color: 'var(--t3)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '.06em' }}>🤖 LLM Feedback</div>
-                        <div style={{ fontSize: '.78rem', color: 'var(--t2)', lineHeight: 1.6 }}>{sub.llm_feedback.substring(0, 140)}...</div>
-                      </div>
-                    )}
                   </div>
                 )
               })}
@@ -252,6 +423,11 @@ export default function StudentDashboard() {
                     ))}
                   </div>
                 </>
+              )}
+              {!myProfile && (
+                <div style={{ textAlign: 'center', color: 'var(--t3)', fontSize: '.82rem', padding: '20px 0' }}>
+                  Nộp bài để xem radar năng lực
+                </div>
               )}
             </div>
           </div>
@@ -364,7 +540,7 @@ export default function StudentDashboard() {
               </div>
             </div>
 
-            {/* ── RESULTS — full width, beautiful ── */}
+            {/* ── RESULTS ── */}
             {subResult && subResult.status !== 'pending' && (
               <div className="card animate-fade-in-up" style={{ border: `1px solid ${subResult.status === 'passed' ? 'rgba(52,211,153,.25)' : subResult.status === 'failed' ? 'rgba(248,113,113,.25)' : 'rgba(251,191,36,.25)'}`, background: subResult.status === 'passed' ? 'rgba(16,185,129,.03)' : subResult.status === 'failed' ? 'rgba(229,62,62,.03)' : 'rgba(251,191,36,.03)' }}>
 
@@ -392,7 +568,7 @@ export default function StudentDashboard() {
                   </div>
                 </div>
 
-                {/* 3 Tier scores — big beautiful */}
+                {/* 3 Tier scores */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '16px', marginBottom: '24px' }}>
                   {[
                     { n: 'T1: Correctness', desc: 'Cú pháp & Logic', v: subResult.score_t1, m: 40, c: 'var(--bl)', bg: 'rgba(59,130,246,.08)', icon: '🎯' },
@@ -431,11 +607,9 @@ export default function StudentDashboard() {
                   ))}
                 </div>
 
-                {/* Content: LLM feedback + code graph */}
+                {/* LLM feedback + code graph */}
                 <div style={{ display: 'grid', gridTemplateColumns: code.trim() ? '1fr 1fr' : '1fr', gap: '20px', alignItems: 'start' }} className="g2">
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-
-                    {/* LLM Feedback */}
                     {subResult.llm_feedback && (
                       <div className={`fb ${subResult.status === 'passed' ? 'fb-pass' : subResult.status === 'failed' ? 'fb-fail' : 'fb-warn'}`}>
                         <div className="fb-lbl" style={{ fontSize: '.78rem', marginBottom: '10px' }}>🤖 LLM Analysis Feedback</div>
@@ -443,7 +617,6 @@ export default function StudentDashboard() {
                       </div>
                     )}
 
-                    {/* AI Alert */}
                     {subResult.ai_suspicion_flag && (
                       <div className="fb fb-ai">
                         <div className="fb-lbl" style={{ color: '#f97316', fontSize: '.78rem' }}>
@@ -453,7 +626,6 @@ export default function StudentDashboard() {
                       </div>
                     )}
 
-                    {/* Misconceptions */}
                     {(subResult.misconceptions || []).length > 0 && (
                       <div style={{ padding: '16px', background: 'rgba(248,113,113,.06)', border: '1px solid rgba(248,113,113,.2)', borderRadius: 'var(--r12)' }}>
                         <div style={{ fontWeight: 700, fontSize: '.8rem', color: '#f87171', marginBottom: '10px' }}>⚠️ Lỗi Tư duy Phát hiện</div>
@@ -463,7 +635,6 @@ export default function StudentDashboard() {
                       </div>
                     )}
 
-                    {/* Actions */}
                     <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '4px' }}>
                       <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/chat?asgnId=${selAsgn?.id}`)}>
                         💬 Hỏi AI về kết quả này
@@ -474,7 +645,6 @@ export default function StudentDashboard() {
                     </div>
                   </div>
 
-                  {/* Code Graph */}
                   {code.trim() && (
                     <div>
                       <div style={{ fontSize: '.74rem', fontWeight: 700, color: 'var(--t3)', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '.06em' }}>
@@ -570,7 +740,9 @@ export default function StudentDashboard() {
                       <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <div style={{ fontSize: '.86rem', fontWeight: 600 }}>{a.title}</div>
-                          <span style={{ fontFamily: 'var(--display)', fontSize: '.92rem', fontWeight: 800, color: scoreColor(sc) }}>{sc || '—'}</span>
+                          <span style={{ fontFamily: 'var(--display)', fontSize: '.92rem', fontWeight: 800, color: scoreColor(sc) }}>
+                            {sub ? sc : <span style={{ color: 'var(--t4)', fontSize: '.78rem', fontFamily: 'var(--body)' }}>Chưa nộp</span>}
+                          </span>
                         </div>
                         <div style={{ fontSize: '.72rem', color: 'var(--t3)', marginTop: '3px' }}>
                           {sub ? fmtDate(sub.submitted_at) : 'Chưa nộp'}

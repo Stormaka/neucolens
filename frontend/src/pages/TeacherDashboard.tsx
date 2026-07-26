@@ -2,9 +2,10 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../AuthContext'
-import { classrooms, assignments, profiles, submissions, misconceptions, chats } from '../api'
+import { classrooms, assignments, profiles, submissions, misconceptions, chats, system } from '../api'
 import { ConceptHeatmap, RadarChart, scoreColor, PROFILE_BADGE, STATUS_BADGE, Loader, useToast, avBg, avTx, fmtDate, SessionChart, CodeBlock, ConceptTagInput } from '../components/ui'
 import CodeGraph from '../components/CodeGraph'
+import ValidationTab from '../components/ValidationTab'
 
 export default function TeacherDashboard() {
   const { user, logout } = useAuth()
@@ -34,11 +35,13 @@ export default function TeacherDashboard() {
   const [asgnSubsLoading, setAsgnSubsLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [classId, setClassId] = useState<number | null>(null)
+  const [systemChecks, setSystemChecks] = useState<any>(null)
 
   useEffect(() => { loadData() }, [])
 
   async function loadData() {
     try {
+      system.check().then(setSystemChecks).catch(() => setSystemChecks(null))
       const rooms: any[] = await classrooms.list()
       if (!rooms.length) return setLoading(false)
       const room = rooms[0]
@@ -110,7 +113,7 @@ export default function TeacherDashboard() {
   }
 
   const filtered = students.filter(s =>
-    (!svSearch || s.name?.toLowerCase().includes(svSearch.toLowerCase()) || s.mssv?.includes(svSearch)) &&
+    (!svSearch || s.name?.toLowerCase().includes(svSearch.toLowerCase()) || s.studentCode?.includes(svSearch)) &&
     (svFilter === 'all' || s.profile_type === svFilter)
   )
 
@@ -155,9 +158,14 @@ export default function TeacherDashboard() {
             </h1>
             <p style={{ color: 'var(--t2)', fontSize: '.85rem' }}>Phân tích năng lực lập trình qua LLM + Understand-Anything Pipeline</p>
           </div>
-          <button className="btn btn-primary" onClick={() => setShowCreateAsgn(true)}>
-            + Tạo Bài tập mới
-          </button>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button className="btn btn-ghost" onClick={() => navigate('/admin')} style={{ border: '1px solid var(--b2)' }}>
+              🛡️ Quản trị hệ thống
+            </button>
+            <button className="btn btn-primary" onClick={() => setShowCreateAsgn(true)}>
+              + Tạo Bài tập mới
+            </button>
+          </div>
         </div>
 
         {/* ── Stats ── */}
@@ -182,7 +190,7 @@ export default function TeacherDashboard() {
 
         {/* ── Tabs ── */}
         <div className="tabs" style={{ marginBottom: '24px' }}>
-          {[['overview', '📊 Tổng quan'], ['assignments', '📋 Bài tập'], ['students', '👥 Sinh viên'], ['misconceptions', '🧠 Ngộ nhận'], ['ews', '🚨 EWS & Cảnh báo']].map(([id, lbl]) => (
+          {[['overview', '📊 Tổng quan'], ['assignments', '📋 Bài tập'], ['students', '👥 Sinh viên'], ['misconceptions', '🧠 Ngộ nhận'], ['ews', '🚨 EWS & Cảnh báo'], ['validation', '🔬 Kiểm chứng 4 Yếu tố']].map(([id, lbl]) => (
             <button key={id} className={`tab ${activeTab === id ? 'active' : ''}`} onClick={() => setActiveTab(id)}>{lbl}</button>
           ))}
         </div>
@@ -292,11 +300,17 @@ export default function TeacherDashboard() {
               {/* Pipeline status */}
               <div className="card card-sm">
                 <div style={{ fontWeight: 700, fontSize: '.88rem', marginBottom: '12px' }}>🔬 UA Pipeline Status</div>
-                {[['📨', 'Code Receiver'], ['🔍', 'AST Scanner'], ['📐', 'Static Analyzer'], ['⚙️', 'Test Runner'], ['🧠', 'LLM Engine']].map(([ic, n]) => (
-                  <div key={n} style={{ display: 'flex', alignItems: 'center', gap: '9px', padding: '6px 0', borderBottom: '1px solid var(--b1)' }}>
-                    <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--gn)', boxShadow: '0 0 6px var(--gn)', flexShrink: 0 }} />
-                    <span style={{ fontSize: '.74rem', color: 'var(--t2)' }}>{ic} {n}</span>
-                    <span style={{ marginLeft: 'auto', fontSize: '.65rem', color: 'var(--gn)', fontWeight: 700, letterSpacing: '.06em' }}>READY</span>
+                {[
+                  ['📨', 'Code Receiver', Boolean(systemChecks)],
+                  ['🔍', 'Rule Analyzer', Boolean(systemChecks)],
+                  ['🗄️', 'Database', Boolean(systemChecks?.checks?.database?.available)],
+                  ['⚙️', 'Test Runner', Boolean(systemChecks?.checks?.gpp?.available)],
+                  ['🧠', 'LLM Engine', Boolean(systemChecks?.checks?.gemini?.configured)],
+                ].map(([ic, n, ready]) => (
+                  <div key={String(n)} style={{ display: 'flex', alignItems: 'center', gap: '9px', padding: '6px 0', borderBottom: '1px solid var(--b1)' }}>
+                    <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: ready ? 'var(--gn)' : 'var(--or)', boxShadow: ready ? '0 0 6px var(--gn)' : 'none', flexShrink: 0 }} />
+                    <span style={{ fontSize: '.74rem', color: 'var(--t2)' }}>{String(ic)} {String(n)}</span>
+                    <span style={{ marginLeft: 'auto', fontSize: '.65rem', color: ready ? 'var(--gn)' : 'var(--or)', fontWeight: 700, letterSpacing: '.06em' }}>{ready ? 'READY' : 'OFF'}</span>
                   </div>
                 ))}
               </div>
@@ -350,6 +364,58 @@ export default function TeacherDashboard() {
             {/* Selected assignment detail */}
             {selAsgn && (
               <div>
+                <div className="card" style={{ marginBottom: '24px', background: 'var(--bg2)', padding: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontWeight: 800, fontSize: '1.02rem', fontFamily: 'var(--display)' }}>⚙️ Quản lý Bài tập: {selAsgn.title}</h3>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px', flexWrap: 'wrap' }}>
+                        <span className={`badge ${selAsgn.status === 'open' ? 'bdg' : 'bdn'}`}>{selAsgn.status === 'open' ? '🟢 Đang mở' : '⚫ Đã đóng'}</span>
+                        <span style={{ fontSize: '.76rem', color: 'var(--t2)' }}>
+                          Hạn chót: <strong style={{ color: 'var(--t1)' }}>{fmtDate(selAsgn.deadline)}</strong>
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      {/* Extend deadline */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input type="datetime-local" className="input" id="extend-dl-input" defaultValue={selAsgn.deadline ? new Date(new Date(selAsgn.deadline).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''} style={{ padding: '5px 8px', fontSize: '.74rem', width: '180px' }} />
+                        <button className="btn btn-ghost btn-sm" style={{ border: '1px solid var(--b2)' }} onClick={async () => {
+                          const val = (document.getElementById('extend-dl-input') as HTMLInputElement)?.value
+                          if (!val) { toast('Chọn thời gian gia hạn', true); return }
+                          try {
+                            const isoVal = new Date(val).toISOString()
+                            await assignments.update(selAsgn.id, { deadline: isoVal })
+                            toast('Gia hạn bài tập thành công!')
+                            // Refresh
+                            const updated = await assignments.byClassroom(classId)
+                            setAsgns(updated)
+                            setSelAsgnId(selAsgn.id)
+                          } catch (err: any) {
+                            toast(err.error || 'Lỗi gia hạn bài tập', true)
+                          }
+                        }}>Gia hạn</button>
+                      </div>
+
+                      {/* Toggle status */}
+                      <button className={`btn btn-sm ${selAsgn.status === 'open' ? 'btn-ghost' : 'btn-primary'}`} style={selAsgn.status === 'open' ? { border: '1px solid var(--b2)', color: '#f87171' } : {}} onClick={async () => {
+                        const nextStatus = selAsgn.status === 'open' ? 'closed' : 'open'
+                        if (!window.confirm(`Bạn có chắc chắn muốn ${nextStatus === 'open' ? 'mở lại' : 'đóng'} bài nộp này?`)) return
+                        try {
+                          await assignments.setStatus(selAsgn.id, nextStatus)
+                          toast(`Đã ${nextStatus === 'open' ? 'mở lại' : 'đóng'} bài nộp thành công!`)
+                          // Refresh
+                          const updated = await assignments.byClassroom(classId)
+                          setAsgns(updated)
+                          setSelAsgnId(selAsgn.id)
+                        } catch (err: any) {
+                          toast(err.error || 'Lỗi cập nhật trạng thái bài nộp', true)
+                        }
+                      }}>
+                        {selAsgn.status === 'open' ? '🔒 Đóng nộp bài' : '🔓 Mở lại nộp bài'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
                 <div style={{ fontWeight: 700, fontSize: '.92rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px', fontFamily: 'var(--display)' }}>
                   🔬 Code Graphs — <span style={{ color: 'var(--rl)' }}>{selAsgn.title}</span>
                   <span style={{ fontSize: '.73rem', fontWeight: 400, color: 'var(--t3)' }}>Code Knowledge Graph của từng sinh viên</span>
@@ -464,6 +530,30 @@ export default function TeacherDashboard() {
                   ))}
                 </div>
               </div>
+              <div className="card card-sm" style={{ padding: '12px' }}>
+                <div style={{ fontWeight: 700, fontSize: '.78rem', marginBottom: '8px', color: 'var(--t1)' }}>➕ Thêm sinh viên vào lớp</div>
+                <form onSubmit={async (e) => {
+                  e.preventDefault()
+                  const form = e.currentTarget
+                  const emailInput = form.elements.namedItem('studentEmail') as HTMLInputElement
+                  const email = emailInput.value.trim()
+                  if (!email || !classId) return
+                  try {
+                    await classrooms.enroll(classId, email)
+                    toast('Đã thêm sinh viên vào lớp!')
+                    emailInput.value = ''
+                    const svs = await classrooms.students(classId)
+                    setStudents(svs)
+                    const updatedStats = await classrooms.stats(classId)
+                    setStats(updatedStats)
+                  } catch (err: any) {
+                    toast(err.error || 'Lỗi thêm sinh viên', true)
+                  }
+                }} style={{ display: 'flex', gap: '6px' }}>
+                  <input name="studentEmail" className="input" type="email" placeholder="email@neu.edu.vn" style={{ flex: 1, padding: '5px 8px', fontSize: '.74rem' }} required />
+                  <button type="submit" className="btn btn-primary btn-sm" style={{ padding: '4px 10px', fontSize: '.74rem', minWidth: 'fit-content' }}>Thêm</button>
+                </form>
+              </div>
               <div className="card card-sm" style={{ padding: '7px', maxHeight: '60vh', overflowY: 'auto' }}>
                 {filtered.map((s, si) => {
                   const pb = PROFILE_BADGE[s.profile_type] || PROFILE_BADGE['on-track']
@@ -478,7 +568,7 @@ export default function TeacherDashboard() {
                           <span className={`badge ${pb.c}`} style={{ fontSize: '.6rem', flexShrink: 0 }}>{pb.i}</span>
                         </div>
                         <div style={{ display: 'flex', gap: '8px', marginTop: '2px' }}>
-                          <span style={{ fontSize: '.7rem', color: 'var(--t3)', fontFamily: 'var(--mono)' }}>{s.mssv}</span>
+                          <span style={{ fontSize: '.7rem', color: 'var(--t3)', fontFamily: 'var(--mono)' }}>{s.studentCode}</span>
                           <span style={{ fontSize: '.7rem', fontWeight: 700, color: scoreColor(s.overall_score || 0) }}>{s.overall_score || 0}/100</span>
                         </div>
                       </div>
@@ -501,7 +591,7 @@ export default function TeacherDashboard() {
                       <div>
                         <div style={{ fontFamily: 'var(--display)', fontSize: '1.15rem', fontWeight: 800 }}>{selStudent.name}</div>
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '5px' }}>
-                          <span style={{ fontSize: '.74rem', color: 'var(--t2)' }}>MSSV: <b style={{ fontFamily: 'var(--mono)' }}>{selStudent.mssv}</b></span>
+                          <span style={{ fontSize: '.74rem', color: 'var(--t2)' }}>Mã sinh viên: <b style={{ fontFamily: 'var(--mono)' }}>{selStudent.studentCode}</b></span>
                           <span className={`badge ${(PROFILE_BADGE[selStudent.profile_type] || PROFILE_BADGE['on-track']).c}`}>
                             {(PROFILE_BADGE[selStudent.profile_type] || PROFILE_BADGE['on-track']).i} {(PROFILE_BADGE[selStudent.profile_type] || PROFILE_BADGE['on-track']).l}
                           </span>
@@ -698,7 +788,7 @@ export default function TeacherDashboard() {
                       {s.name?.split(' ').slice(-1)[0]?.slice(0, 2).toUpperCase()}
                     </div>
                     <div>
-                      <b style={{ fontSize: '.88rem' }}>{s.name} ({s.mssv})</b><br />
+                      <b style={{ fontSize: '.88rem' }}>{s.name} ({s.studentCode})</b><br />
                       <span style={{ fontSize: '.73rem', color: 'var(--t2)' }}>Điểm: {s.overall_score}/100 · Risk: {Math.round(s.risk_score * 100)}%</span>
                     </div>
                   </div>
@@ -722,7 +812,7 @@ export default function TeacherDashboard() {
                       {s.name?.split(' ').slice(-1)[0]?.slice(0, 2).toUpperCase()}
                     </div>
                     <div>
-                      <b style={{ fontSize: '.88rem' }}>{s.name} ({s.mssv})</b><br />
+                      <b style={{ fontSize: '.88rem' }}>{s.name} ({s.studentCode})</b><br />
                       <span style={{ fontSize: '.73rem', color: 'var(--t2)' }}>{s.ai_flag_count} buổi bị cảnh báo AI</span>
                     </div>
                   </div>
@@ -872,6 +962,11 @@ export default function TeacherDashboard() {
               )}
             </div>
           </div>
+        )}
+
+        {/* ── TAB: VALIDATION ── */}
+        {activeTab === 'validation' && (
+          <ValidationTab classId={classId} asgns={asgns} students={students} />
         )}
       </div>
 

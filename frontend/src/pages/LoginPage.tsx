@@ -52,6 +52,7 @@ export default function LoginPage() {
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
   const [focusedField, setFocusedField] = useState<string | null>(null)
+  const demoLoginEnabled = true
 
   const doLogin = async (e?: string, p?: string) => {
     const em = e || email, pw = p || password
@@ -61,7 +62,7 @@ export default function LoginPage() {
       await login(em, pw)
       navigate('/')
     } catch (er: any) {
-      setErr(er.error || 'Đăng nhập thất bại')
+      setErr(er.message || 'Đăng nhập thất bại')
     } finally {
       setLoading(false)
     }
@@ -196,24 +197,26 @@ export default function LoginPage() {
               Đăng nhập vào hệ thống
             </h2>
             <p style={{ fontSize: '.78rem', color: 'var(--t3)', marginBottom: '24px' }}>
-              Sử dụng tài khoản portal.neu.edu.vn của bạn
+              Sử dụng tài khoản demo của hệ thống
             </p>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <form onSubmit={e => { e.preventDefault(); doLogin() }} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {/* Email field */}
               <div>
-                <label className="label">Email</label>
+                <label className="label" htmlFor="login-email">Email</label>
                 <div style={{ position: 'relative' }}>
                   <input
                     id="login-email"
                     className="input"
                     type="email"
+                    name="email"
+                    autoComplete="username"
+                    required
                     placeholder="email@neu.edu.vn"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                     onFocus={() => setFocusedField('email')}
                     onBlur={() => setFocusedField(null)}
-                    onKeyDown={e => e.key === 'Enter' && doLogin()}
                     style={{
                       paddingLeft: '40px',
                       transition: 'all var(--t-fast) var(--ease)',
@@ -230,18 +233,20 @@ export default function LoginPage() {
 
               {/* Password field */}
               <div>
-                <label className="label">Mật khẩu</label>
+                <label className="label" htmlFor="login-pass">Mật khẩu</label>
                 <div style={{ position: 'relative' }}>
                   <input
                     id="login-pass"
                     className="input"
                     type="password"
+                    name="password"
+                    autoComplete="current-password"
+                    required
                     placeholder="••••••••"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     onFocus={() => setFocusedField('password')}
                     onBlur={() => setFocusedField(null)}
-                    onKeyDown={e => e.key === 'Enter' && doLogin()}
                     style={{ paddingLeft: '40px' }}
                   />
                   <span style={{
@@ -270,9 +275,9 @@ export default function LoginPage() {
 
               <button
                 id="btn-login"
+                type="submit"
                 className="btn btn-primary"
                 style={{ width: '100%', justifyContent: 'center', padding: '12px', marginTop: '4px' }}
-                onClick={() => doLogin()}
                 disabled={loading}
               >
                 {loading
@@ -287,13 +292,13 @@ export default function LoginPage() {
                 fontSize: '.73rem',
                 paddingTop: '4px',
               }}>
-                Hệ thống demo — không cần đăng ký tài khoản mới
+                {demoLoginEnabled ? 'Chế độ demo đang bật' : 'Đăng nhập bằng tài khoản được cấp'}
               </div>
-            </div>
+            </form>
           </div>
 
           {/* ── Demo Accounts ── */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+          {demoLoginEnabled && <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
             <div style={{
               fontSize: '.76rem',
               fontWeight: 700,
@@ -311,7 +316,8 @@ export default function LoginPage() {
             </div>
 
             {DEMOS.map((d, i) => (
-              <div
+              <button
+                type="button"
                 key={i}
                 className="glass-card card-hover"
                 style={{
@@ -354,9 +360,9 @@ export default function LoginPage() {
                     transition: 'transform var(--t-fast)',
                   }}>›</div>
                 </div>
-              </div>
+              </button>
             ))}
-          </div>
+          </div>}
         </div>
 
         {/* ── Feature Badges ── */}

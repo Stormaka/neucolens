@@ -1062,4 +1062,8 @@ select.input    { cursor: pointer; appearance: none }
   .page-wrap { padding: 16px }
   .bubble-user, .bubble-ai { max-width: 90% }
   .nav { padding: 0 16px }
+  /* Assignment action buttons — wrap nicely on small screens */
+  .asgn-actions { flex-direction: row !important; flex-wrap: wrap !important; min-width: unset !important; }
+  .asgn-actions button { flex: 1 1 auto; min-width: 80px; font-size: .72rem !important; }
 }
+

@@ -1,12 +1,13 @@
 /**
  * Dynamic LLM Analysis Service — Storm v4
- * Rule-based scoring (deterministic) + Gemini Flash feedback (qualitative)
+ * Rule-based scoring (deterministic) + Gemini Flash / DeepSeek feedback (qualitative)
  * Không cho điểm ảo — code rác phải nhận điểm thấp
  */
 import { execSync, spawnSync } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import https from 'https'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
 // ── Gemini Flash client ────────────────────────────────────────────────────────
@@ -22,18 +23,67 @@ try {
   }
 } catch (e) { console.log('⚠️  Gemini init failed:', e.message) }
 
+// ── DeepSeek client (OpenAI-compatible API) ───────────────────────────────────
+const DEEPSEEK_KEY = process.env.DEEPSEEK_API_KEY || ''
+const DEEPSEEK_AVAILABLE = DEEPSEEK_KEY && DEEPSEEK_KEY.length > 10
+if (DEEPSEEK_AVAILABLE) {
+  console.log('🧠 DeepSeek LLM: ACTIVE (fallback provider)')
+} else {
+  console.log('⚠️  DeepSeek: No API key configured')
+}
+
 /**
- * Gọi Gemini để tạo feedback chi tiết bằng tiếng Việt
- * @param {string} code
- * @param {object} assignment
- * @param {object} ruleResult - {total, t1, t2, t3, misconceptions}
- * @returns {Promise<string>} feedback text
+ * Gọi DeepSeek Chat API (OpenAI-compatible)
+ * @param {string} systemPrompt
+ * @param {string} userPrompt
+ * @returns {Promise<string|null>}
  */
-async function getGeminiFeedback(code, assignment, ruleResult) {
-  if (!geminiModel) return null
-  try {
-    const { total, t1, t2, t3, misconceptions } = ruleResult
-    const prompt = `Bạn là trợ giảng môn Lập trình C++ tại NEU (Đại học Kinh tế Quốc dân). 
+async function callDeepSeek(systemPrompt, userPrompt) {
+  if (!DEEPSEEK_AVAILABLE) return null
+  return new Promise((resolve) => {
+    const body = JSON.stringify({
+      model: 'deepseek-chat',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      max_tokens: 600,
+      temperature: 0.7
+    })
+    const options = {
+      hostname: 'api.deepseek.com',
+      path: '/chat/completions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${DEEPSEEK_KEY}`,
+        'Content-Length': Buffer.byteLength(body)
+      }
+    }
+    const req = https.request(options, (res) => {
+      let data = ''
+      res.on('data', chunk => { data += chunk })
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data)
+          const text = parsed?.choices?.[0]?.message?.content?.trim()
+          resolve(text || null)
+        } catch { resolve(null) }
+      })
+    })
+    req.on('error', () => resolve(null))
+    req.setTimeout(15000, () => { req.destroy(); resolve(null) })
+    req.write(body)
+    req.end()
+  })
+}
+
+/**
+ * Tạo nội dung prompt phân tích code chung
+ */
+function buildCodeAnalysisPrompt(code, assignment, ruleResult) {
+  const { total, t1, t2, t3, misconceptions } = ruleResult
+  return `Bạn là trợ giảng môn Lập trình C++ tại NEU (Đại học Kinh tế Quốc dân). 
 Phân tích bài nộp của sinh viên và đưa ra nhận xét bằng tiếng Việt.
 
 BÀI TẬP: ${assignment.title}
@@ -57,14 +107,43 @@ Viết nhận xét ngắn gọn (3-5 câu) bằng tiếng Việt:
 2. Lỗi/điểm cần cải thiện cụ thể
 3. Gợi ý sửa nếu có lỗi
 KHÔNG giải thích lại điểm số. Trả lời trực tiếp, không dùng markdown headers.`
+}
 
-    const result = await geminiModel.generateContent(prompt)
-    const text = result.response.text().trim()
-    return text.substring(0, 800) // giới hạn độ dài
-  } catch (e) {
-    console.log('⚠️  Gemini feedback error:', e.message)
-    return null
+/**
+ * Gọi Gemini (ưu tiên) hoặc DeepSeek (fallback) để tạo feedback
+ * @param {string} code
+ * @param {object} assignment
+ * @param {object} ruleResult - {total, t1, t2, t3, misconceptions}
+ * @returns {Promise<string>} feedback text
+ */
+async function getAIFeedback(code, assignment, ruleResult) {
+  const prompt = buildCodeAnalysisPrompt(code, assignment, ruleResult)
+
+  // Ưu tiên Gemini
+  if (geminiModel) {
+    try {
+      const result = await geminiModel.generateContent(prompt)
+      const text = result.response.text().trim()
+      if (text) return { text: text.substring(0, 800), provider: 'gemini' }
+    } catch (e) {
+      console.log('⚠️  Gemini feedback error:', e.message, '→ trying DeepSeek fallback')
+    }
   }
+
+  // Fallback: DeepSeek
+  if (DEEPSEEK_AVAILABLE) {
+    try {
+      const text = await callDeepSeek(
+        'Bạn là trợ giảng lập trình C++ tại Đại học Kinh tế Quốc dân (NEU). Luôn trả lời bằng tiếng Việt ngắn gọn, rõ ràng.',
+        prompt
+      )
+      if (text) return { text: text.substring(0, 800), provider: 'deepseek' }
+    } catch (e) {
+      console.log('⚠️  DeepSeek feedback error:', e.message)
+    }
+  }
+
+  return null
 }
 
 /**
@@ -75,6 +154,10 @@ KHÔNG giải thích lại điểm số. Trả lời trực tiếp, không dùng
  */
 async function runCppTestCases(code, testCases) {
   if (!testCases || testCases.length === 0) return { passCount: 0, totalCount: 0, errors: [] }
+  const localRunnerAllowed = process.env.ENABLE_LOCAL_RUNNER === 'true' || process.env.NODE_ENV !== 'production'
+  if (!localRunnerAllowed) {
+    return { passCount: 0, totalCount: 0, errors: ['Trình chạy mã native đang tắt trong production; cần môi trường sandbox chuyên dụng.'] }
+  }
 
   // Tìm g++ — thử PATH thường trước, sau đó MSYS2 ucrt64
   const GPP_PATHS = [
@@ -250,9 +333,11 @@ function scoreConcept(concept, code) {
   // Arrays: chỉ tính nếu khai báo mảng thực sự
   if (concept === 'Arrays') {
     const hasArrayDecl = /\b(int|double|float|char|string)\s+\w+\s*\[\d*\]/.test(code)
+    const hasVectorDecl = /\b(?:std::)?vector\s*<[^>]+>\s+\w+/.test(code)
     const hasIndexAccess = /\w+\s*\[\s*\w+\s*\]/.test(code)
-    if (hasArrayDecl && hasIndexAccess) return 100
-    if (hasArrayDecl || hasIndexAccess) return 60
+    const hasRangeIteration = /for\s*\([^:]+:\s*\w+\s*\)/.test(code)
+    if ((hasArrayDecl || hasVectorDecl) && (hasIndexAccess || hasRangeIteration)) return 100
+    if (hasArrayDecl || hasVectorDecl || hasIndexAccess) return 60
     return 0
   }
 
@@ -266,6 +351,8 @@ function scoreConcept(concept, code) {
 
   // Sorting: phải có swap pattern (biến tạm + gán)
   if (concept === 'Sorting Algorithm') {
+    const hasLibrarySort = /\b(?:std::)?sort\s*\(/.test(code)
+    if (hasLibrarySort) return 100
     const hasTemp = /\b(int|double|float|char)\s+t\s*=|\btemp\s*=|\bswap\s*\(/.test(code)
     const hasLoop = /for\s*\(/.test(code)
     const hasNestedLoop = (code.match(/for\s*\(/g) || []).length >= 2
@@ -336,8 +423,6 @@ function scoreConcept(concept, code) {
 
 // ── Main analysis function ────────────────────────────────────────────────────
 export async function analyzeCode(code, assignment, studentName = '') {
-  await new Promise(r => setTimeout(r, 800 + Math.random() * 600))
-
   const concepts = assignment.concepts || []
   const lang = assignment.lang || 'C++'
   const maxT1 = assignment.weight_t1 || 40
@@ -477,11 +562,12 @@ export async function analyzeCode(code, assignment, studentName = '') {
     testResult
   })
 
-  // ── Storm v4: Gemini Flash feedback (bổ sung qualitative analysis) ─────────
+  // ── Storm v4: AI feedback (Gemini → DeepSeek fallback) ───────────────────
   let llm_feedback = ruleFeedback
-  const geminiFb = await getGeminiFeedback(code, { ...assignment, concepts }, { total, t1, t2, t3, misconceptions })
-  if (geminiFb) {
-    llm_feedback = ruleFeedback + '\n\n💬 Nhận xét từ AI:\n' + geminiFb
+  const aiFb = await getAIFeedback(code, { ...assignment, concepts }, { total, t1, t2, t3, misconceptions })
+  if (aiFb) {
+    const providerLabel = aiFb.provider === 'deepseek' ? '🧠 Nhận xét từ DeepSeek AI' : '💬 Nhận xét từ Gemini AI'
+    llm_feedback = ruleFeedback + `\n\n${providerLabel}:\n` + aiFb.text
   }
 
   return {
@@ -494,6 +580,41 @@ export async function analyzeCode(code, assignment, studentName = '') {
     misconceptions,
     concept_scores
   }
+}
+
+export async function generateChatReply({ question, assignment, submission }) {
+  const code = submission?.code || ''
+  const feedback = submission?.llm_feedback || ''
+
+  const systemMsg = 'Ban la tro giang lap trinh NEU. Tra loi tieng Viet, ngan gon, khong cho dap an khi sinh vien xin.'
+  const userMsg = [
+    'Bai tap: ' + assignment.title,
+    'Mo ta: ' + (assignment.description || ''),
+    'Khai niem: ' + (assignment.concepts || []).join(', '),
+    'Code gan nhat:\n' + (code.substring(0, 4000) || '(chua nop)'),
+    'Ket qua cham: ' + (submission ? (submission.score_total + '/100; ' + feedback.substring(0, 400)) : '(chua co)'),
+    'Cau hoi: ' + question.substring(0, 2000)
+  ].join('\n')
+
+  // Priority 1: Gemini
+  if (geminiModel) {
+    try {
+      const result = await geminiModel.generateContent(systemMsg + '\n\n' + userMsg)
+      return { content: result.response.text().trim().substring(0, 4000), provider: 'gemini', model: 'gemini-1.5-flash' }
+    } catch (e) { console.log('Gemini chat error:', e.message, '=> DeepSeek fallback') }
+  }
+
+  // Priority 2: DeepSeek
+  if (DEEPSEEK_AVAILABLE) {
+    try {
+      const text = await callDeepSeek(systemMsg, userMsg)
+      if (text) return { content: text.substring(0, 4000), provider: 'deepseek', model: 'deepseek-chat' }
+    } catch (e) { console.log('DeepSeek chat error:', e.message) }
+  }
+
+  // Fallback
+  const scoreLine = submission ? ('Score: ' + submission.score_total + '/100.') : 'No submission.'
+  return { content: 'AI not configured. ' + scoreLine, provider: 'rule_based', model: null }
 }
 
 function checkGoodNaming(code) {

@@ -1,11 +1,28 @@
 import express from 'express'
 import { getDb } from '../db/database.js'
-import { authenticate, requireRole } from './auth.js'
+import { authenticate, requireRole, verifyClassroomAccess } from './auth.js'
 
 const router = express.Router()
 
+function verifyAssignmentAccess({ teacherOnly = false } = {}) {
+  return (req, res, next) => {
+    const db = getDb()
+    const assignment = db.prepare('SELECT classroom_id FROM assignments WHERE id=?').get(req.params.id)
+    if (!assignment) return res.status(404).json({ error: 'Không tìm thấy bài tập' })
+    if (req.user.role === 'teacher') {
+      const owns = db.prepare('SELECT 1 FROM classrooms WHERE id=? AND lecturer_id=?').get(assignment.classroom_id, req.user.id)
+      if (!owns) return res.status(403).json({ error: 'Không có quyền với bài tập này', code: 'ASSIGNMENT_ACCESS_DENIED' })
+    } else {
+      if (teacherOnly) return res.status(403).json({ error: 'Chỉ giảng viên mới có quyền truy cập' })
+      const enrolled = db.prepare('SELECT 1 FROM enrollments WHERE classroom_id=? AND student_id=?').get(assignment.classroom_id, req.user.id)
+      if (!enrolled) return res.status(403).json({ error: 'Bạn chưa được ghi danh vào lớp này' })
+    }
+    next()
+  }
+}
+
 // GET /api/assignments/classroom/:id
-router.get('/classroom/:id', authenticate, (req, res) => {
+router.get('/classroom/:id', authenticate, verifyClassroomAccess, (req, res) => {
   const db = getDb()
   // #7: Pagination support — defaults to page 1, limit 50 (backward-compat for current UI)
   const page = Math.max(1, parseInt(req.query.page) || 1)
@@ -39,7 +56,7 @@ router.get('/classroom/:id', authenticate, (req, res) => {
 })
 
 // GET /api/assignments/:id — include sample_code (#10: strip raw JSON fields)
-router.get('/:id', authenticate, (req, res) => {
+router.get('/:id', authenticate, verifyAssignmentAccess(), (req, res) => {
   const db = getDb()
   const a = db.prepare('SELECT * FROM assignments WHERE id=?').get(req.params.id)
   if (!a) return res.status(404).json({ error: 'Không tìm thấy bài tập' })
@@ -48,7 +65,7 @@ router.get('/:id', authenticate, (req, res) => {
 })
 
 // POST /api/assignments — tạo bài tập mới (với sample_code & dynamic concepts)
-router.post('/', authenticate, requireRole('teacher'), (req, res) => {
+router.post('/', authenticate, requireRole('teacher'), verifyClassroomAccess, (req, res) => {
   const { classroom_id, title, description, lang, deadline, concepts, sample_code, weight_t1, weight_t2, weight_t3 } = req.body
   if (!classroom_id || !title) return res.status(400).json({ error: 'Thiếu thông tin bắt buộc' })
   const db = getDb()
@@ -62,7 +79,7 @@ router.post('/', authenticate, requireRole('teacher'), (req, res) => {
 })
 
 // PATCH /api/assignments/:id — cập nhật thông tin (bao gồm sample_code, concepts)
-router.patch('/:id', authenticate, requireRole('teacher'), (req, res) => {
+router.patch('/:id', authenticate, requireRole('teacher'), verifyAssignmentAccess({ teacherOnly: true }), (req, res) => {
   const { title, description, deadline, concepts, sample_code, lang } = req.body
   const db = getDb()
   const updates = []
@@ -82,7 +99,7 @@ router.patch('/:id', authenticate, requireRole('teacher'), (req, res) => {
 })
 
 // PATCH /api/assignments/:id/status
-router.patch('/:id/status', authenticate, requireRole('teacher'), (req, res) => {
+router.patch('/:id/status', authenticate, requireRole('teacher'), verifyAssignmentAccess({ teacherOnly: true }), (req, res) => {
   const { status } = req.body
   if (!['open','closed'].includes(status)) return res.status(400).json({ error: 'Status không hợp lệ' })
   const db = getDb()
@@ -92,10 +109,10 @@ router.patch('/:id/status', authenticate, requireRole('teacher'), (req, res) => 
 
 // GET /api/assignments/:id/submissions — tất cả submissions (Teacher)
 // #4: expose student_code alias for mssv; #10: strip misconceptions_json raw
-router.get('/:id/submissions', authenticate, requireRole('teacher'), (req, res) => {
+router.get('/:id/submissions', authenticate, requireRole('teacher'), verifyAssignmentAccess({ teacherOnly: true }), (req, res) => {
   const db = getDb()
   const subs = db.prepare(`
-    SELECT s.*, u.name as student_name, u.mssv, u.mssv as student_code
+    SELECT s.*, u.name as student_name, u.mssv as student_code
     FROM submissions s JOIN users u ON s.student_id=u.id
     WHERE s.assignment_id=? ORDER BY s.submitted_at DESC
   `).all(req.params.id)

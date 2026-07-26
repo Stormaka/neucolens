@@ -120,7 +120,7 @@ export const projectStore = {
   },
 }
 
-/** Tạo project metadata từ tên file zip */
+/** Tạo bản ghi upload ở trạng thái chờ. Không tự bịa kết quả phân tích. */
 export function buildProjectFromZip(
   fileName: string,
   studentInfo?: { name: string; studentId: string }
@@ -131,16 +131,7 @@ export function buildProjectFromZip(
     .replace(/[-_]/g, ' ')
     .replace(/\b\w/g, c => c.toUpperCase())
 
-  // Detect ngôn ngữ từ tên file
-  let lang = 'Unknown'
   const lower = baseName.toLowerCase()
-  if (lower.includes('spring') || lower.includes('java')) lang = 'Java · Spring Boot'
-  else if (lower.includes('react') || lower.includes('next')) lang = 'TypeScript · React'
-  else if (lower.includes('django') || lower.includes('python') || lower.includes('flask')) lang = 'Python · Django'
-  else if (lower.includes('node') || lower.includes('express')) lang = 'Node.js · Express'
-  else if (lower.includes('laravel') || lower.includes('php')) lang = 'PHP · Laravel'
-  else if (lower.includes('dotnet') || lower.includes('aspnet') || lower.includes('csharp')) lang = 'C# · ASP.NET'
-  else if (lower.includes('go') || lower.includes('gin')) lang = 'Go · Gin'
 
   const now = new Date()
   const analyzedAt = now.toLocaleDateString('vi-VN') + ' ' + now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
@@ -150,14 +141,14 @@ export function buildProjectFromZip(
     name: displayName,
     student: studentInfo?.name ?? 'Nguyễn Văn An',
     studentId: studentInfo?.studentId ?? '11201234',
-    lang,
-    commit: Math.random().toString(16).slice(2, 9),
+    lang: 'Chưa xác định',
+    commit: 'pending',
     analyzedAt,
-    nodes: Math.floor(30 + Math.random() * 120),
-    edges: Math.floor(50 + Math.random() * 200),
-    layers: Math.floor(3 + Math.random() * 3),
-    score: Math.floor(65 + Math.random() * 30),
-    status: 'done',
+    nodes: 0,
+    edges: 0,
+    layers: 0,
+    score: 0,
+    status: 'processing',
     tags: detectTags(lower),
     layerNames: ['API', 'Service', 'Repository', 'Entity'],
     graphSource: 'uploaded',

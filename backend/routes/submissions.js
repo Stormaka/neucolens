@@ -1,19 +1,24 @@
 import express from 'express'
 import { getDb } from '../db/database.js'
-import { authenticate } from './auth.js'
+import { authenticate, requireRole } from './auth.js'
 import { analyzeCode, updateStudentProfile } from '../services/llmService.js'
 
 const router = express.Router()
 
 // POST /api/submissions — nộp bài + trigger LLM analysis
-router.post('/', authenticate, async (req, res) => {
+router.post('/', authenticate, requireRole('student'), async (req, res) => {
   const { assignment_id, code } = req.body
   if (!assignment_id || code === undefined) return res.status(400).json({ error: 'Thiếu assignment_id hoặc code', status: 400 })
 
   const db = getDb()
   const asgn = db.prepare('SELECT * FROM assignments WHERE id=?').get(assignment_id)
   if (!asgn) return res.status(404).json({ error: 'Không tìm thấy bài tập', status: 404 })
+  const enrolled = db.prepare('SELECT 1 FROM enrollments WHERE student_id=? AND classroom_id=?').get(req.user.id, asgn.classroom_id)
+  if (!enrolled) return res.status(403).json({ error: 'Bạn chưa được ghi danh vào lớp chứa bài tập này', code: 'NOT_ENROLLED' })
   if (asgn.status === 'closed') return res.status(400).json({ error: 'Bài tập đã đóng, không thể nộp', status: 400 })
+  if (asgn.sample_code && code.replace(/\s+/g, '') === asgn.sample_code.replace(/\s+/g, '')) {
+    return res.status(422).json({ error: 'Bài nộp trùng hoàn toàn đáp án mẫu; hãy tự triển khai lời giải', code: 'SAMPLE_CODE_COPY' })
+  }
 
   // Count attempt number
   const prevCount = db.prepare('SELECT COUNT(*) as c FROM submissions WHERE assignment_id=? AND student_id=?').get(assignment_id, req.user.id).c
@@ -24,10 +29,7 @@ router.post('/', authenticate, async (req, res) => {
     VALUES (?,?,?,?,'pending',datetime('now'))`).run(assignment_id, req.user.id, code, attemptNum)
   const subId = insertResult.lastInsertRowid
 
-  // Respond immediately with pending status (SSE or polling)
-  res.json({ id: subId, status: 'pending', attempt_number: attemptNum, message: 'Đang phân tích...' })
-
-  // Run LLM analysis in background
+  // Phân tích trong cùng request để serverless không đóng băng tác vụ nền sau khi response.
   try {
     const analysis = await analyzeCode(code, { ...asgn, concepts: JSON.parse(asgn.concepts_json || '[]') }, req.user.name)
     db.prepare(`UPDATE submissions SET score_total=?,score_t1=?,score_t2=?,score_t3=?,status=?,
@@ -55,9 +57,13 @@ router.post('/', authenticate, async (req, res) => {
       JSON.parse(asgn.concepts_json || '[]'),
       analysis.concept_scores || {}
     )
+    const completed = db.prepare('SELECT * FROM submissions WHERE id=?').get(subId)
+    const { misconceptions_json, ...clean } = completed
+    return res.status(201).json({ ...clean, misconceptions: JSON.parse(misconceptions_json || '[]') })
   } catch (err) {
     console.error('LLM analysis error:', err)
     db.prepare(`UPDATE submissions SET status='failed',llm_feedback=? WHERE id=?`).run('Lỗi phân tích. Vui lòng thử lại.', subId)
+    return res.status(500).json({ error: 'Không thể phân tích bài nộp', code: 'ANALYSIS_FAILED' })
   }
 })
 
@@ -99,11 +105,30 @@ router.get('/me/:assignmentId', authenticate, (req, res) => {
   res.json(subs.map(s => { const { misconceptions_json, ...c } = s; return { ...c, misconceptions: JSON.parse(misconceptions_json || '[]') } }))
 })
 
-// GET /api/submissions/my/:assignmentId — backward compat alias (#2)
-router.get('/my/:assignmentId', authenticate, (req, res) => {
+// GET /api/submissions?status=passed&from=ISO&to=ISO&sort=submitted_at&order=desc&page=1&limit=20
+router.get('/', authenticate, (req, res) => {
   const db = getDb()
-  const subs = db.prepare(`SELECT * FROM submissions WHERE assignment_id=? AND student_id=? ORDER BY submitted_at DESC`).all(req.params.assignmentId, req.user.id)
-  res.json(subs.map(s => { const { misconceptions_json, ...c } = s; return { ...c, misconceptions: JSON.parse(misconceptions_json || '[]') } }))
+  const page = Math.max(1, Number.parseInt(req.query.page) || 1)
+  const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit) || 20))
+  const filters = [], params = []
+  if (req.user.role === 'student') { filters.push('s.student_id=?'); params.push(req.user.id) }
+  else { filters.push('c.lecturer_id=?'); params.push(req.user.id) }
+  if (req.query.status) {
+    if (!['pending','passed','warning','failed'].includes(req.query.status)) return res.status(400).json({ error: 'Status không hợp lệ', code: 'INVALID_STATUS' })
+    filters.push('s.status=?'); params.push(req.query.status)
+  }
+  if (req.query.from) { filters.push('s.submitted_at>=?'); params.push(req.query.from) }
+  if (req.query.to) { filters.push('s.submitted_at<=?'); params.push(req.query.to) }
+  if (req.query.classroom_id) { filters.push('a.classroom_id=?'); params.push(Number(req.query.classroom_id)) }
+  const sortMap = { submitted_at: 's.submitted_at', score_total: 's.score_total', status: 's.status' }
+  const sort = sortMap[req.query.sort] || 's.submitted_at'
+  const order = String(req.query.order).toLowerCase() === 'asc' ? 'ASC' : 'DESC'
+  const where = filters.length ? `WHERE ${filters.join(' AND ')}` : ''
+  const base = `FROM submissions s JOIN assignments a ON a.id=s.assignment_id JOIN classrooms c ON c.id=a.classroom_id ${where}`
+  const total = db.prepare(`SELECT COUNT(*) c ${base}`).get(...params).c
+  const rows = db.prepare(`SELECT s.*,a.title assignment_title ${base} ORDER BY ${sort} ${order},s.id ${order} LIMIT ? OFFSET ?`).all(...params, limit, (page - 1) * limit)
+  const data = rows.map(({ misconceptions_json, ...row }) => ({ ...row, misconceptions: JSON.parse(misconceptions_json || '[]') }))
+  res.json({ data, total, page, limit })
 })
 
 // GET /api/submissions/student/:studentId/classroom/:classId — teacher view

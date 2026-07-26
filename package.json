@@ -9,7 +9,8 @@
     "build": "npm install --prefix frontend && npm run build --prefix frontend",
     "dev:backend": "npm run dev --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\""
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "test:e2e": "node backend/tests/e2e.mjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

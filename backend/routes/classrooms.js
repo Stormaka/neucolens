@@ -1,6 +1,6 @@
 import express from 'express'
 import { getDb } from '../db/database.js'
-import { authenticate, requireRole } from './auth.js'
+import { authenticate, requireRole, verifyClassroomAccess } from './auth.js'
 
 const router = express.Router()
 
@@ -32,7 +32,7 @@ router.post('/', authenticate, requireRole('teacher'), (req, res) => {
 })
 
 // GET /api/classrooms/:id — chi tiết lớp
-router.get('/:id', authenticate, (req, res) => {
+router.get('/:id', authenticate, verifyClassroomAccess, (req, res) => {
   const db = getDb()
   const room = db.prepare('SELECT c.*,u.name as lecturer_name FROM classrooms c JOIN users u ON c.lecturer_id=u.id WHERE c.id=?').get(req.params.id)
   if (!room) return res.status(404).json({ error: 'Không tìm thấy lớp học' })
@@ -40,7 +40,7 @@ router.get('/:id', authenticate, (req, res) => {
 })
 
 // GET /api/classrooms/:id/students — danh sách sinh viên + profiles (dynamic mastery)
-router.get('/:id/students', authenticate, requireRole('teacher'), (req, res) => {
+router.get('/:id/students', authenticate, requireRole('teacher'), verifyClassroomAccess, (req, res) => {
   const db = getDb()
   // #6: Pagination — default limit 50 (backward compat); future UI can pass ?limit=20&page=2
   const page = Math.max(1, parseInt(req.query.page) || 1)
@@ -94,7 +94,7 @@ router.get('/:id/students', authenticate, requireRole('teacher'), (req, res) => 
 
 
 // GET /api/classrooms/:id/stats — thống kê tổng quan
-router.get('/:id/stats', authenticate, requireRole('teacher'), (req, res) => {
+router.get('/:id/stats', authenticate, requireRole('teacher'), verifyClassroomAccess, (req, res) => {
   const db = getDb()
   const cid = req.params.id
 

@@ -52,6 +52,16 @@ function initSchema() {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS refresh_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token_hash TEXT UNIQUE NOT NULL,
+      expires_at TEXT NOT NULL,
+      revoked_at TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON refresh_tokens(token_hash);
+
     CREATE TABLE IF NOT EXISTS classrooms (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -149,6 +159,42 @@ function initSchema() {
       concept TEXT NOT NULL,
       description TEXT,
       detected_at TEXT DEFAULT (datetime('now'))
+    );
+
+    -- Scientific Validation Framework: Expert Ground Truth Ratings
+    CREATE TABLE IF NOT EXISTS expert_evaluations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      submission_id INTEGER UNIQUE NOT NULL REFERENCES submissions(id) ON DELETE CASCADE,
+      evaluator_id INTEGER NOT NULL REFERENCES users(id),
+      expert_score_total INTEGER NOT NULL,
+      expert_score_t1 INTEGER DEFAULT 0,
+      expert_score_t2 INTEGER DEFAULT 0,
+      expert_score_t3 INTEGER DEFAULT 0,
+      expert_classification TEXT DEFAULT 'on-track' CHECK(expert_classification IN ('advanced','on-track','at-risk','ai-warning')),
+      expert_feedback TEXT,
+      misconceptions_identified_json TEXT DEFAULT '[]',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    -- Scientific Validation Framework: Benchmark Run History Logs
+    CREATE TABLE IF NOT EXISTS validation_benchmark_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      classroom_id INTEGER NOT NULL REFERENCES classrooms(id),
+      run_at TEXT DEFAULT (datetime('now')),
+      sample_size INTEGER DEFAULT 0,
+      mae_total REAL DEFAULT 0,
+      mae_t1 REAL DEFAULT 0,
+      mae_t2 REAL DEFAULT 0,
+      mae_t3 REAL DEFAULT 0,
+      pearson_correlation REAL DEFAULT 0,
+      spearman_correlation REAL DEFAULT 0,
+      cohen_kappa REAL DEFAULT 0,
+      precision_misconception REAL DEFAULT 0,
+      recall_misconception REAL DEFAULT 0,
+      f1_misconception REAL DEFAULT 0,
+      bias_direction TEXT DEFAULT 'balanced',
+      notes TEXT
     );
   `)
 }
@@ -296,6 +342,8 @@ export async function seedDatabase() {
 
   const sub = (wi, sid, t1, t2, t3, code, fb, at, dt, mis='[]', aiF=0, aiC=0.05, aiR='') => {
     if (!code && at === 0) return
+    // Demo history must not pretend students submitted the instructor's exact answer.
+    if (code && code === SC[`w${wi + 1}`]) code = `${code}\n// Demo submission variant`
     const total = t1+t2+t3
     iS.run(aids[wi], sid, code||'', at, total, t1, t2, t3,
       total >= 70 ? 'passed' : total >= 50 ? 'warning' : 'failed',

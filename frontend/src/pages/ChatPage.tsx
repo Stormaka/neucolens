@@ -386,7 +386,7 @@ export default function ChatPage() {
     let code: string | null = null
     let sub: any = null
     try {
-      const subs = await submissions.my(asgn.id)
+      const subs = await submissions.me(asgn.id)
       if (subs?.length) {
         sub = subs[0] // Mới nhất
         code = sub.code || null
@@ -424,8 +424,6 @@ export default function ChatPage() {
       timestamp: new Date(),
     }
     setMessages([greeting])
-    // Lưu greeting vào DB
-    try { await chats.sendMessage(asgn.id, greetingContent, 'ai') } catch { }
   }
 
   function buildGreeting(name: string | undefined, asgn: any, hasCode: boolean, sub: any, analysis: any): string {
@@ -467,25 +465,20 @@ export default function ChatPage() {
     setMessages(prev => [...prev, userMsg])
     setInput('')
     setIsTyping(true)
-    await new Promise(r => setTimeout(r, 700 + Math.random() * 500))
-
-    // Nếu user paste code trong chat → phân tích code đó
-    let codeToAnalyze = studentCode
-    let analysisToUse = analysis
-    if (text.includes('#include') || text.includes('int main') || text.includes('void ')) {
-      codeToAnalyze = text
-      analysisToUse = analyzeStudentCode(text, selAsgn?.concepts || [])
+    try {
+      const result = await chats.ask(selAsgn.id, text)
+      setMessages(prev => [...prev, {
+        id: (Date.now() + 1).toString(), role: 'assistant',
+        content: result.response, timestamp: new Date()
+      }])
+    } catch (error: any) {
+      setMessages(prev => [...prev, {
+        id: (Date.now() + 1).toString(), role: 'assistant',
+        content: `Không thể xử lý câu hỏi: ${error.message || 'Lỗi máy chủ'}`, timestamp: new Date()
+      }])
+    } finally {
+      setIsTyping(false)
     }
-
-    const response = getAIResponse(text, selAsgn, codeToAnalyze, analysisToUse)
-    const aiMsg: Message = {
-      id: (Date.now() + 1).toString(),
-      role: 'assistant',
-      content: response,
-      timestamp: new Date(),
-    }
-    setMessages(prev => [...prev, aiMsg])
-    setIsTyping(false)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -779,9 +772,8 @@ export default function ChatPage() {
                 <div style={{ maxWidth: msg.role === 'user' ? '65%' : '78%', minWidth: 0 }}>
                   <div
                     className={msg.role === 'user' ? 'bubble-user' : 'bubble-ai'}
-                    style={{ wordBreak: 'break-word' }}
-                    dangerouslySetInnerHTML={{ __html: formatMessage(msg.content) }}
-                  />
+                    style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}
+                  >{msg.content}</div>
                   <div style={{
                     fontSize: '.64rem', color: 'var(--t4)', marginTop: '3px',
                     textAlign: msg.role === 'user' ? 'right' : 'left',

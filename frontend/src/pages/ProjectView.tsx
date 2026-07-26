@@ -29,28 +29,27 @@ export default function ProjectView() {
     }
   }, [tabParam])
 
-  // Lấy project từ store, nếu không thấy dùng fallback
+  // Chỉ hiển thị project có thật trong store; không dựng dữ liệu giả cho URL sai.
   const storedProject = id ? projectStore.getById(id) : undefined
+  if (!storedProject) {
+    return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg0)', color: 'var(--t1)' }}>
+      <div className="card" style={{ textAlign: 'center' }}>
+        <h2>Không tìm thấy project</h2>
+        <p style={{ color: 'var(--t2)' }}>Liên kết không hợp lệ hoặc project đã bị xoá.</p>
+        <button className="btn btn-primary" onClick={() => navigate(fromRole === 'lecturer' ? '/lecturer' : '/student')}>Về trang chính</button>
+      </div>
+    </div>
+  }
+  const project: ProjectMeta = storedProject
 
-  const project: ProjectMeta = storedProject ?? {
-    id: id || 'proj-1',
-    name: 'Hệ thống Quản lý Bán hàng Online',
-    student: 'Nguyễn Văn An',
-    studentId: '11201234',
-    lang: 'Java · Spring Boot',
-    analyzedAt: '2026-06-05 14:32',
-    commit: 'a3f8b2c',
-    nodes: 87,
-    edges: 134,
-    layers: 4,
-    score: 82,
-    status: 'done',
-    tags: ['spring-boot', 'mysql'],
-    layerNames: ['API', 'Service', 'Repository', 'Entity'],
-    graphSource: 'sample',
-    reviewStatus: 'pending',
-    reviewComment: '',
-    reviewScore: 0,
+  if (project.status !== 'done') {
+    return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg0)', color: 'var(--t1)' }}>
+      <div className="card" style={{ textAlign: 'center', maxWidth: 520 }}>
+        <h2>Chưa có kết quả phân tích</h2>
+        <p style={{ color: 'var(--t2)' }}>Tệp {project.sourceFile || project.name} chưa được backend phân tích. Hệ thống không tạo điểm hoặc đồ thị giả.</p>
+        <button className="btn btn-primary" onClick={() => navigate(fromRole === 'lecturer' ? '/lecturer' : '/student')}>Về trang chính</button>
+      </div>
+    </div>
   }
 
   // Graph data: dùng SAMPLE_GRAPH cho proj mẫu, tạo dynamic cho proj upload
@@ -71,6 +70,12 @@ export default function ProjectView() {
         userName={fromRole === 'lecturer' ? 'TS. Nguyễn Minh Đức' : project.student}
         studentId={fromRole === 'student' ? project.studentId : undefined}
       />
+
+      {project.graphSource === 'sample' && (
+        <div style={{ padding: '7px 24px', background: 'rgba(245,158,11,.12)', color: '#fbbf24', borderBottom: '1px solid rgba(245,158,11,.3)', fontSize: '.78rem', textAlign: 'center' }}>
+          DỮ LIỆU MINH HỌA — không phải kết quả phân tích từ mã nguồn thật
+        </div>
+      )}
 
       {/* ── Sub-header ── */}
       <div className="no-print" style={{
