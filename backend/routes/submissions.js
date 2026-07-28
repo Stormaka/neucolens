@@ -5,66 +5,106 @@ import { analyzeCode, updateStudentProfile } from '../services/llmService.js'
 
 const router = express.Router()
 
-// POST /api/submissions — nộp bài + trigger LLM analysis
+// ── In-memory rate limit: max 5 submissions / phút / student ─────────────────
+const _rateMap = new Map()
+function isRateLimited(studentId) {
+  const now = Date.now(), window = 60_000, max = 5
+  const prev = (_rateMap.get(studentId) || []).filter(t => now - t < window)
+  if (prev.length >= max) return true
+  _rateMap.set(studentId, [...prev, now])
+  return false
+}
+
+// POST /api/submissions — nộp bài
 router.post('/', authenticate, requireRole('student'), async (req, res) => {
   const { assignment_id, code } = req.body
-  if (!assignment_id || code === undefined) return res.status(400).json({ error: 'Thiếu assignment_id hoặc code', status: 400 })
+  if (!assignment_id || code === undefined)
+    return res.status(400).json({ error: 'Thiếu assignment_id hoặc code', status: 400 })
+
+  // 4.4 Guard: giới hạn kích thước source code
+  if (typeof code !== 'string' || code.length > 50_000)
+    return res.status(413).json({ error: 'Code vượt quá giới hạn 50,000 ký tự', code: 'CODE_TOO_LARGE' })
+
+  // Rate limit
+  if (isRateLimited(req.user.id))
+    return res.status(429).json({ error: 'Bạn đã nộp quá 5 lần trong 1 phút. Vui lòng chờ.', code: 'RATE_LIMITED' })
 
   const db = getDb()
   const asgn = db.prepare('SELECT * FROM assignments WHERE id=?').get(assignment_id)
   if (!asgn) return res.status(404).json({ error: 'Không tìm thấy bài tập', status: 404 })
-  const enrolled = db.prepare('SELECT 1 FROM enrollments WHERE student_id=? AND classroom_id=?').get(req.user.id, asgn.classroom_id)
-  if (!enrolled) return res.status(403).json({ error: 'Bạn chưa được ghi danh vào lớp chứa bài tập này', code: 'NOT_ENROLLED' })
-  if (asgn.status === 'closed') return res.status(400).json({ error: 'Bài tập đã đóng, không thể nộp', status: 400 })
-  if (asgn.sample_code && code.replace(/\s+/g, '') === asgn.sample_code.replace(/\s+/g, '')) {
+
+  const enrolled = db.prepare('SELECT 1 FROM enrollments WHERE student_id=? AND classroom_id=?')
+    .get(req.user.id, asgn.classroom_id)
+  if (!enrolled)
+    return res.status(403).json({ error: 'Bạn chưa được ghi danh vào lớp chứa bài tập này', code: 'NOT_ENROLLED' })
+
+  if (asgn.status === 'closed')
+    return res.status(400).json({ error: 'Bài tập đã đóng, không thể nộp', status: 400 })
+
+  if (asgn.sample_code && code.replace(/\s+/g, '') === asgn.sample_code.replace(/\s+/g, ''))
     return res.status(422).json({ error: 'Bài nộp trùng hoàn toàn đáp án mẫu; hãy tự triển khai lời giải', code: 'SAMPLE_CODE_COPY' })
-  }
 
-  // Count attempt number
-  const prevCount = db.prepare('SELECT COUNT(*) as c FROM submissions WHERE assignment_id=? AND student_id=?').get(assignment_id, req.user.id).c
-  const attemptNum = prevCount + 1
-
-  // Insert pending submission
-  const insertResult = db.prepare(`INSERT INTO submissions (assignment_id,student_id,code,attempt_number,status,submitted_at)
-    VALUES (?,?,?,?,'pending',datetime('now'))`).run(assignment_id, req.user.id, code, attemptNum)
-  const subId = insertResult.lastInsertRowid
-
-  // Phân tích trong cùng request để serverless không đóng băng tác vụ nền sau khi response.
+  // 4.13 Fix: dùng transaction để tránh race condition attempt_number
+  let subId
   try {
-    const analysis = await analyzeCode(code, { ...asgn, concepts: JSON.parse(asgn.concepts_json || '[]') }, req.user.name)
-    db.prepare(`UPDATE submissions SET score_total=?,score_t1=?,score_t2=?,score_t3=?,status=?,
-      llm_feedback=?,ai_suspicion_flag=?,ai_suspicion_confidence=?,ai_suspicion_reason=?,misconceptions_json=?
-      WHERE id=?`).run(
-      analysis.score_total, analysis.score_t1, analysis.score_t2, analysis.score_t3, analysis.status,
-      analysis.llm_feedback, analysis.ai_suspicion_flag, analysis.ai_suspicion_confidence, analysis.ai_suspicion_reason,
-      analysis.misconceptions_json, subId
-    )
-    // ── Storm v4: Insert vào bảng misconceptions riêng biệt ──────────────
-    const detectedMisconceptions = JSON.parse(analysis.misconceptions_json || '[]')
-    if (detectedMisconceptions.length > 0) {
-      const insertMisc = db.prepare(
-        'INSERT INTO misconceptions (student_id, assignment_id, classroom_id, concept, description) VALUES (?,?,?,?,?)'
-      )
-      detectedMisconceptions.forEach(desc => {
-        const concept = desc.split('—')[0].replace(/^[🔴⚠️📌⭐💡🚨\s]+/, '').trim().substring(0, 100)
-        try {
-          insertMisc.run(req.user.id, assignment_id, asgn.classroom_id, concept, desc)
-        } catch { /* ignore duplicates */ }
-      })
-    }
-    // Update student profile with dynamic concept scores
-    updateStudentProfile(db, req.user.id, asgn.classroom_id,
-      JSON.parse(asgn.concepts_json || '[]'),
-      analysis.concept_scores || {}
-    )
-    const completed = db.prepare('SELECT * FROM submissions WHERE id=?').get(subId)
-    const { misconceptions_json, ...clean } = completed
-    return res.status(201).json({ ...clean, misconceptions: JSON.parse(misconceptions_json || '[]') })
+    const insertTx = db.transaction(() => {
+      const prevCount = db.prepare(
+        'SELECT COUNT(*) as c FROM submissions WHERE assignment_id=? AND student_id=?'
+      ).get(assignment_id, req.user.id).c
+      const attemptNum = prevCount + 1
+      const r = db.prepare(`
+        INSERT INTO submissions (assignment_id, student_id, code, attempt_number, status, submitted_at)
+        VALUES (?, ?, ?, ?, 'pending', datetime('now'))
+      `).run(assignment_id, req.user.id, code, attemptNum)
+      return r.lastInsertRowid
+    })
+    subId = insertTx()
   } catch (err) {
-    console.error('LLM analysis error:', err)
-    db.prepare(`UPDATE submissions SET status='failed',llm_feedback=? WHERE id=?`).run('Lỗi phân tích. Vui lòng thử lại.', subId)
-    return res.status(500).json({ error: 'Không thể phân tích bài nộp', code: 'ANALYSIS_FAILED' })
+    console.error('Submission insert error:', err.message)
+    return res.status(409).json({ error: 'Lỗi tạo bài nộp. Vui lòng thử lại.', code: 'INSERT_FAILED' })
   }
+
+  // Trả về ngay với status 202 để không block HTTP response
+  res.status(202).json({ id: subId, status: 'pending', message: 'Bài nộp đang được phân tích...' })
+
+  // 4.6/4.7 Fix: evaluation chạy sau khi response đã gửi (non-blocking)
+  setImmediate(async () => {
+    try {
+      const analysis = await analyzeCode(
+        code,
+        { ...asgn, concepts: JSON.parse(asgn.concepts_json || '[]') },
+        req.user.name
+      )
+      db.prepare(`
+        UPDATE submissions SET score_total=?, score_t1=?, score_t2=?, score_t3=?, status=?,
+          llm_feedback=?, ai_suspicion_flag=?, ai_suspicion_confidence=?, ai_suspicion_reason=?,
+          misconceptions_json=?
+        WHERE id=?
+      `).run(
+        analysis.score_total, analysis.score_t1, analysis.score_t2, analysis.score_t3, analysis.status,
+        analysis.llm_feedback, analysis.ai_suspicion_flag, analysis.ai_suspicion_confidence,
+        analysis.ai_suspicion_reason, analysis.misconceptions_json, subId
+      )
+      const detectedMisconceptions = JSON.parse(analysis.misconceptions_json || '[]')
+      if (detectedMisconceptions.length > 0) {
+        const insertMisc = db.prepare(
+          'INSERT OR IGNORE INTO misconceptions (student_id, assignment_id, classroom_id, concept, description) VALUES (?,?,?,?,?)'
+        )
+        detectedMisconceptions.forEach(desc => {
+          const concept = desc.split('—')[0].replace(/^[🔴⚠️📌⭐💡🚨\s]+/, '').trim().substring(0, 100)
+          try { insertMisc.run(req.user.id, assignment_id, asgn.classroom_id, concept, desc) } catch { }
+        })
+      }
+      updateStudentProfile(db, req.user.id, asgn.classroom_id,
+        JSON.parse(asgn.concepts_json || '[]'),
+        analysis.concept_scores || {}
+      )
+    } catch (err) {
+      console.error('Background LLM analysis error:', err)
+      db.prepare(`UPDATE submissions SET status='failed', llm_feedback=? WHERE id=?`)
+        .run('Lỗi phân tích. Vui lòng thử lại.', subId)
+    }
+  })
 })
 
 // ── #5/#15: Batch endpoint — trả latest submission cho nhiều assignments trong 1 request ──
@@ -132,9 +172,16 @@ router.get('/', authenticate, (req, res) => {
 })
 
 // GET /api/submissions/student/:studentId/classroom/:classId — teacher view
-// #5: fixed N+1 — attempt count now computed in the SQL subquery (single DB call)
-router.get('/student/:studentId/classroom/:classId', authenticate, (req, res) => {
+// 4.12a Fix: thêm requireRole('teacher') + kiểm tra classroom ownership
+router.get('/student/:studentId/classroom/:classId', authenticate, requireRole('teacher'), (req, res) => {
   const db = getDb()
+
+  // 4.12a: Teacher chỉ được xem lớp của mình
+  const classroom = db.prepare('SELECT 1 FROM classrooms WHERE id=? AND lecturer_id=?')
+    .get(req.params.classId, req.user.id)
+  if (!classroom)
+    return res.status(403).json({ error: 'Bạn không có quyền xem dữ liệu lớp này', code: 'FORBIDDEN_CLASSROOM' })
+
   const subs = db.prepare(`
     SELECT s.*, a.title as assignment_title, a.concepts_json, a.id as assignment_id,
       (SELECT COUNT(*) FROM submissions
@@ -147,7 +194,6 @@ router.get('/student/:studentId/classroom/:classId', authenticate, (req, res) =>
   const grouped = {}
   subs.forEach(sub => {
     if (!grouped[sub.assignment_id]) {
-      // #10: strip raw JSON fields
       const { concepts_json, misconceptions_json, ...clean } = sub
       grouped[sub.assignment_id] = {
         ...clean,
@@ -159,13 +205,24 @@ router.get('/student/:studentId/classroom/:classId', authenticate, (req, res) =>
   res.json(Object.values(grouped))
 })
 
-// PATCH /api/submissions/:id/override — Giảng viên sửa điểm tay khi cần
+// PATCH /api/submissions/:id/override — Giảng viên sửa điểm tay
+// 4.12b Fix: kiểm tra submission thuộc classroom của teacher
 router.patch('/:id/override', authenticate, requireRole('teacher'), (req, res) => {
   const db = getDb()
-  const { score_total, score_t1, score_t2, score_t3, status, llm_feedback } = req.body
-  const sub = db.prepare('SELECT * FROM submissions WHERE id=?').get(req.params.id)
+  const sub = db.prepare(`
+    SELECT s.*, a.classroom_id
+    FROM submissions s JOIN assignments a ON s.assignment_id=a.id
+    WHERE s.id=?
+  `).get(req.params.id)
   if (!sub) return res.status(404).json({ error: 'Không tìm thấy submission', status: 404 })
 
+  // 4.12b: Teacher chỉ được sửa điểm submission thuộc classroom của mình
+  const owns = db.prepare('SELECT 1 FROM classrooms WHERE id=? AND lecturer_id=?')
+    .get(sub.classroom_id, req.user.id)
+  if (!owns)
+    return res.status(403).json({ error: 'Bạn không có quyền sửa điểm submission này', code: 'FORBIDDEN_OVERRIDE' })
+
+  const { score_total, score_t1, score_t2, score_t3, status, llm_feedback } = req.body
   const newTotal = score_total !== undefined ? Number(score_total) : sub.score_total
   const newT1 = score_t1 !== undefined ? Number(score_t1) : sub.score_t1
   const newT2 = score_t2 !== undefined ? Number(score_t2) : sub.score_t2
@@ -174,8 +231,7 @@ router.patch('/:id/override', authenticate, requireRole('teacher'), (req, res) =
   const newFeedback = llm_feedback !== undefined ? llm_feedback : sub.llm_feedback
 
   db.prepare(`
-    UPDATE submissions
-    SET score_total=?, score_t1=?, score_t2=?, score_t3=?, status=?, llm_feedback=?
+    UPDATE submissions SET score_total=?, score_t1=?, score_t2=?, score_t3=?, status=?, llm_feedback=?
     WHERE id=?
   `).run(newTotal, newT1, newT2, newT3, newStatus, newFeedback, req.params.id)
 
@@ -184,12 +240,22 @@ router.patch('/:id/override', authenticate, requireRole('teacher'), (req, res) =
   res.json({ ...clean, misconceptions: JSON.parse(misconceptions_json || '[]') })
 })
 
-// GET /api/submissions/:id — polling result (must be after named routes)
+// GET /api/submissions/:id — polling result (phải ở sau các named routes)
+// 4.12c Fix: student chỉ xem submission của chính mình; teacher chỉ xem lớp mình quản lý
 router.get('/:id', authenticate, (req, res) => {
   const db = getDb()
   const sub = db.prepare('SELECT * FROM submissions WHERE id=?').get(req.params.id)
   if (!sub) return res.status(404).json({ error: 'Không tìm thấy submission', status: 404 })
-  if (sub.student_id !== req.user.id && req.user.role !== 'teacher') return res.status(403).json({ error: 'Không có quyền', status: 403 })
+
+  if (req.user.role === 'student' && sub.student_id !== req.user.id)
+    return res.status(403).json({ error: 'Không có quyền xem submission này', status: 403 })
+
+  if (req.user.role === 'teacher') {
+    const asgn = db.prepare('SELECT classroom_id FROM assignments WHERE id=?').get(sub.assignment_id)
+    const owns = db.prepare('SELECT 1 FROM classrooms WHERE id=? AND lecturer_id=?').get(asgn?.classroom_id, req.user.id)
+    if (!owns) return res.status(403).json({ error: 'Không có quyền xem submission này', status: 403 })
+  }
+
   const { misconceptions_json, ...clean } = sub
   res.json({ ...clean, misconceptions: JSON.parse(misconceptions_json || '[]') })
 })

@@ -55,32 +55,54 @@ router.get('/classroom/:id', authenticate, verifyClassroomAccess, (req, res) => 
   res.json({ data, total, page, limit })
 })
 
-// GET /api/assignments/:id — include sample_code (#10: strip raw JSON fields)
+// GET /api/assignments/:id — 4.9 Fix: giáo viên nhận được test_cases, sinh viên chỉ nhận sample tests
 router.get('/:id', authenticate, verifyAssignmentAccess(), (req, res) => {
   const db = getDb()
   const a = db.prepare('SELECT * FROM assignments WHERE id=?').get(req.params.id)
   if (!a) return res.status(404).json({ error: 'Không tìm thấy bài tập' })
   const { concepts_json, test_cases_json, ...clean } = a
-  res.json({ ...clean, concepts: JSON.parse(concepts_json || '[]') })
+  const allTestCases = JSON.parse(test_cases_json || '[]')
+  // Teacher thấy tất cả; Student chỉ thấy public test cases
+  const visibleTests = req.user.role === 'teacher'
+    ? allTestCases
+    : allTestCases.filter(tc => !tc.hidden)
+  res.json({ ...clean, concepts: JSON.parse(concepts_json || '[]'), sample_test_cases: visibleTests })
 })
 
-// POST /api/assignments — tạo bài tập mới (với sample_code & dynamic concepts)
+// POST /api/assignments — 4.9 Fix: nhận test_cases array (public + hidden)
 router.post('/', authenticate, requireRole('teacher'), verifyClassroomAccess, (req, res) => {
-  const { classroom_id, title, description, lang, deadline, concepts, sample_code, weight_t1, weight_t2, weight_t3 } = req.body
+  const { classroom_id, title, description, lang, deadline, concepts, sample_code,
+    weight_t1, weight_t2, weight_t3, test_cases } = req.body
   if (!classroom_id || !title) return res.status(400).json({ error: 'Thiếu thông tin bắt buộc' })
+
+  // Validate test_cases format nếu có
+  const testCasesArr = Array.isArray(test_cases) ? test_cases.map(tc => ({
+    input: String(tc.input ?? ''),
+    expected: String(tc.expected ?? ''),
+    hidden: Boolean(tc.hidden)   // true = ẩn khỏi student
+  })) : []
+
   const db = getDb()
-  const result = db.prepare(`INSERT INTO assignments (classroom_id,title,description,lang,deadline,concepts_json,sample_code,weight_t1,weight_t2,weight_t3,status)
-    VALUES (?,?,?,?,?,?,?,?,?,?,'open')`).run(
+  const result = db.prepare(`
+    INSERT INTO assignments (classroom_id,title,description,lang,deadline,concepts_json,sample_code,weight_t1,weight_t2,weight_t3,status,test_cases_json)
+    VALUES (?,?,?,?,?,?,?,?,?,?,'open',?)
+  `).run(
     classroom_id, title, description || '', lang || 'C++', deadline || null,
     JSON.stringify(concepts || []), sample_code || '',
-    weight_t1 || 40, weight_t2 || 35, weight_t3 || 25
+    weight_t1 || 40, weight_t2 || 35, weight_t3 || 25,
+    JSON.stringify(testCasesArr)
   )
-  res.status(201).json({ id: result.lastInsertRowid, title, status: 'open', concepts: concepts || [] })
+  res.status(201).json({
+    id: result.lastInsertRowid, title, status: 'open',
+    concepts: concepts || [],
+    test_case_count: testCasesArr.length,
+    hidden_test_count: testCasesArr.filter(t => t.hidden).length
+  })
 })
 
-// PATCH /api/assignments/:id — cập nhật thông tin (bao gồm sample_code, concepts)
+// PATCH /api/assignments/:id — cập nhật thông tin (bao gồm sample_code, concepts, test_cases)
 router.patch('/:id', authenticate, requireRole('teacher'), verifyAssignmentAccess({ teacherOnly: true }), (req, res) => {
-  const { title, description, deadline, concepts, sample_code, lang } = req.body
+  const { title, description, deadline, concepts, sample_code, lang, test_cases } = req.body
   const db = getDb()
   const updates = []
   const vals = []
@@ -90,12 +112,20 @@ router.patch('/:id', authenticate, requireRole('teacher'), verifyAssignmentAcces
   if (concepts !== undefined) { updates.push('concepts_json=?'); vals.push(JSON.stringify(concepts)) }
   if (sample_code !== undefined) { updates.push('sample_code=?'); vals.push(sample_code) }
   if (lang !== undefined) { updates.push('lang=?'); vals.push(lang) }
+  if (test_cases !== undefined) {
+    const testCasesArr = Array.isArray(test_cases) ? test_cases.map(tc => ({
+      input: String(tc.input ?? ''),
+      expected: String(tc.expected ?? ''),
+      hidden: Boolean(tc.hidden)
+    })) : []
+    updates.push('test_cases_json=?'); vals.push(JSON.stringify(testCasesArr))
+  }
   if (!updates.length) return res.status(400).json({ error: 'Không có gì cập nhật' })
   vals.push(req.params.id)
   db.prepare(`UPDATE assignments SET ${updates.join(',')} WHERE id=?`).run(...vals)
   const updated = db.prepare('SELECT * FROM assignments WHERE id=?').get(req.params.id)
   const { concepts_json: uj, test_cases_json: utj, ...updClean } = updated
-  res.json({ ...updClean, concepts: JSON.parse(uj || '[]') })
+  res.json({ ...updClean, concepts: JSON.parse(uj || '[]'), test_case_count: JSON.parse(utj || '[]').length })
 })
 
 // PATCH /api/assignments/:id/status

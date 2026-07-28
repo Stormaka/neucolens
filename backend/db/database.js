@@ -116,6 +116,8 @@ function initSchema() {
       submitted_at TEXT DEFAULT (datetime('now'))
     );
 
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_submissions_attempt ON submissions(assignment_id, student_id, attempt_number);
+
     CREATE TABLE IF NOT EXISTS student_profiles (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       student_id INTEGER NOT NULL REFERENCES users(id),

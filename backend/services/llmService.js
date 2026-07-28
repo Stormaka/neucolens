@@ -160,6 +160,27 @@ async function runCppTestCases(code, testCases) {
     return { passCount: 0, totalCount: 0, errors: ['Trình chạy mã native đang tắt trong production; cần môi trường sandbox chuyên dụng.'] }
   }
 
+  // 4.4 Guard: Chặn code nguy hiểm trước khi compile/chạy khi không có full sandbox
+  const dangerousPatterns = [
+    /\bsystem\s*\(/i,
+    /\bpopen\s*\(/i,
+    /\bfork\s*\(/i,
+    /\bexec[vlp]?\s*\(/i,
+    /\bRemoveDirectory\b/i,
+    /\bDeleteFile\b/i,
+    /#include\s*<windows\.h>/i,
+    /#include\s*<sys\/socket\.h>/i,
+    /#include\s*<winsock2\.h>/i
+  ]
+  const cleanedForScan = cleanCodeForAnalysis(code)
+  if (dangerousPatterns.some(pat => pat.test(cleanedForScan))) {
+    return {
+      passCount: 0,
+      totalCount: testCases.length,
+      errors: ['🔴 AN NINH: Mã nguồn chứa lệnh hệ thống bị cấm (system, popen, fork, socket...).']
+    }
+  }
+
   // Tìm g++ — thử PATH thường trước, sau đó MSYS2 ucrt64
   const GPP_PATHS = [
     'g++',
@@ -222,7 +243,10 @@ async function runCppTestCases(code, testCases) {
         const actual = (runResult.stdout || '').trim().replace(/\r/g, '')
         const expected = (tc.expected || '').trim()
 
-        if (actual === expected) {
+        // 4.8 Fix: floating-point tolerance (±0.001)
+        const numActual = parseFloat(actual), numExpected = parseFloat(expected)
+        const isClose = !isNaN(numActual) && !isNaN(numExpected) && Math.abs(numActual - numExpected) < 0.001
+        if (actual === expected || isClose) {
           passCount++
         } else {
           errors.push(`Test "${tc.input?.substring(0, 20)}": got "${actual}", expected "${expected}"`)
@@ -323,14 +347,26 @@ function cleanCodeForAnalysis(code) {
 function scoreConcept(concept, rawCode) {
   const cleanedCode = cleanCodeForAnalysis(rawCode)
 
-  // Nested Loops: phải có >= 2 vòng lặp thực sự với body
+  // Nested Loops: kiểm tra bằng brace-depth counter thực sự
+  // Vòng lặp lồng nhau = khi đang trong thân của 1 loop thì gặp 1 loop khác
   if (concept === 'Nested Loops') {
-    const forCount = (cleanedCode.match(/for\s*\([^)]*\)\s*\{[^}]*\}/g) || []).length
-    const whileCount = (cleanedCode.match(/while\s*\([^)]*\)\s*\{[^}]*\}/g) || []).length
-    const total = forCount + whileCount
-    if (total >= 2) return 100
-    if (total === 1) return 30
-    return 0
+    let depth = 0, maxNestDepth = 0, inLoop = false
+    const loopRe = /\b(for|while)\s*\(/
+    const lines = cleanedCode.split('\n')
+    for (const line of lines) {
+      const stripped = line.trim()
+      if (loopRe.test(stripped)) {
+        if (inLoop) maxNestDepth = Math.max(maxNestDepth, depth + 1)
+        inLoop = true
+      }
+      for (const ch of stripped) {
+        if (ch === '{') depth++
+        if (ch === '}') { depth--; if (depth <= 0) { depth = 0; inLoop = false } }
+      }
+    }
+    if (maxNestDepth >= 2) return 100
+    if (maxNestDepth === 1) return 80  // có lồng 1 tầng
+    return 0  // chỉ có loop nối tiếp, không có lồng
   }
 
   // Recursion: hàm phải gọi lại chính mình
@@ -518,58 +554,89 @@ export async function analyzeCode(code, assignment, studentName = '') {
     conceptCoverageScore = [hasMain, hasLogic, hasIO].filter(Boolean).length * 33
   }
 
-  // ── Storm v4: Chạy Test Cases thực (nếu có) ─────────────────────────────
+  // 4.5 Fix: phan biet ro NO_TEST_CASES vs RUNNER_DISABLED vs COMPILE_FAILED
   let testResult = { passCount: 0, totalCount: 0, errors: [] }
+  let runnerStatus = 'NO_TEST_CASES'
   const testCases = (() => {
     try { return JSON.parse(assignment.test_cases_json || '[]') } catch { return [] }
   })()
 
   if (lang === 'C++' && testCases.length > 0 && !hasInfiniteLoop) {
-    testResult = await runCppTestCases(code, testCases)
+    const localRunnerAllowed = process.env.ENABLE_LOCAL_RUNNER === 'true' || process.env.NODE_ENV !== 'production'
+    if (!localRunnerAllowed) {
+      runnerStatus = 'RUNNER_DISABLED'
+    } else {
+      testResult = await runCppTestCases(code, testCases)
+      if (testResult.errors.some(e => e.includes('compile') || e.includes('Compile'))) {
+        runnerStatus = 'COMPILE_FAILED'
+      } else if (testResult.errors.some(e => e.includes('Timeout'))) {
+        runnerStatus = 'RUNNER_TIMEOUT'
+      } else {
+        runnerStatus = 'SUCCESS'
+      }
+    }
   }
 
-  // T1 = kết hợp test case (50%) + concept coverage (50%)
-  // Nếu không có test case → dùng 100% concept coverage
-  let t1ConceptPart = Math.round(maxT1 * conceptCoverageScore / 100)
-  let t1TestPart = 0
+  // 4.2 Fix: T1 = 70% test case execution + 30% concept coverage
+  // Tang trong so test case (correctness phai den tu execution)
   let t1
-
-  if (testResult.totalCount > 0) {
+  if (runnerStatus === 'SUCCESS' && testResult.totalCount > 0) {
     const testPassRate = testResult.passCount / testResult.totalCount
-    t1TestPart = Math.round((maxT1 * 0.5) * testPassRate)
-    t1ConceptPart = Math.round((maxT1 * 0.5) * conceptCoverageScore / 100)
+    const t1TestPart = Math.round(maxT1 * 0.70 * testPassRate)
+    const t1ConceptPart = Math.round(maxT1 * 0.30 * conceptCoverageScore / 100)
     t1 = t1TestPart + t1ConceptPart
+  } else if (runnerStatus === 'RUNNER_DISABLED' && testCases.length > 0) {
+    // Co test case nhung runner tat: giam xuong 40% concept (co hinh phat)
+    t1 = Math.round(maxT1 * 0.40 * conceptCoverageScore / 100)
+  } else if (runnerStatus === 'COMPILE_FAILED') {
+    t1 = Math.round(maxT1 * 0.05)  // chi 5% compile attempt
   } else {
-    t1 = t1ConceptPart
+    // NO_TEST_CASES hoac RUNNER_TIMEOUT: 100% concept coverage
+    t1 = Math.round(maxT1 * conceptCoverageScore / 100)
   }
 
   if (hasInfiniteLoop) {
-    t1 = Math.round(t1 * 0.2)  // phạt nặng
-    misconceptions.push('Vòng lặp vô hạn — while loop thiếu lệnh cập nhật biến')
+    t1 = Math.round(t1 * 0.2)
+    misconceptions.push('Vong lap vo han \u2014 while loop thieu lenh cap nhat bien')
   } else if (hasOffByOne) {
     t1 = Math.round(t1 * 0.7)
-    misconceptions.push('Off-by-one error — dùng i<=n thay vì i<n khi duyệt mảng C++')
+    misconceptions.push('Off-by-one error \u2014 dung i<=n thay vi i<n khi duyet mang C++')
   } else if (hasMultipleIf) {
     t1 = Math.round(t1 * 0.75)
-    misconceptions.push('Nhiều if độc lập thay vì if-else chain')
+    misconceptions.push('Nhieu if doc lap thay vi if-else chain')
   }
 
-  // ── Bước 5: Tính T2 — Code Quality ──────────────────────────────────────
+
+  // ── Bước 5: Tính T2 — Code Quality (4.3 Fix) ───────────────────────────
+  // Bo return0 va linecount (vo nghia), dung tieu chi chat luong thuc su
   const hasComments = /\/\/[^\n]+|\/\*[\s\S]*?\*\//.test(code)
   const hasGoodNaming = checkGoodNaming(code)
-  const hasPrompt = /cout\s*<<\s*"[^"]+".*cin/.test(code) || /cout\s*<<\s*"[^"]+"/.test(code)
-  const hasReturn0 = /return\s+0\s*;/.test(code)
-  const lineCount = code.split('\n').filter(l => l.trim()).length
+
+  // Comment co y nghia (>=5 ky tu, khong chi la khai bao bien)
+  const meaningfulComments = (() => {
+    const coms = code.match(/\/\/[^\n]{5,}/g) || []
+    return coms.filter(c => !/^\/\/\s*(int|double|float|cout|cin|\d+)\b/.test(c)).length > 0
+  })()
+
+  // Co ham rieng biet ngoai main (tach logic ra ham)
+  const hasExtraFunctions = (() => {
+    const cl = cleanCodeForAnalysis(code)
+    return [...cl.matchAll(/\b(?:void|int|double|float|bool|string)\s+(\w+)\s*\([^)]*\)\s*\{/g)]
+      .some(m => m[1] !== 'main')
+  })()
+
+  // Do phuc tap nhanh hop ly (1-20 branch -> khong qua lo, khong qua phuc tap)
+  const branchCount = (code.match(/\b(if|else if|for|while|case)\b/g) || []).length
+  const isReasonableComplexity = branchCount >= 1 && branchCount <= 20
 
   let t2Quality = 0
-  if (hasComments) t2Quality += 30
-  if (hasGoodNaming) t2Quality += 30
-  if (hasPrompt) t2Quality += 20
-  if (hasReturn0) t2Quality += 10
-  if (lineCount >= 8) t2Quality += 10  // đủ dài
+  if (meaningfulComments) t2Quality += 35   // comment giai thich
+  if (hasGoodNaming)      t2Quality += 40   // ten bien co y nghia
+  if (hasExtraFunctions)  t2Quality += 15   // co ham rieng biet
+  if (isReasonableComplexity) t2Quality += 10 // do phuc tap hop ly
 
-  let t2 = Math.round(maxT2 * t2Quality / 100)
-  if (aiResult.flag && aiResult.confidence > 0.7) t2 = Math.round(t2 * 0.8)
+  const t2 = Math.round(maxT2 * t2Quality / 100)
+  // 4.11 Fix: AI suspicion chi flag de giao vien review, KHONG tu dong tru diem T2
 
   // ── Bước 6: Tính T3 — Computational Thinking ─────────────────────────────
   // Dựa trên concept scores thực
@@ -594,8 +661,8 @@ export async function analyzeCode(code, assignment, studentName = '') {
     hasInfiniteLoop, hasOffByOne, hasMultipleIf,
     isAI: aiResult.flag && aiResult.confidence > 0.7,
     aiResult, concepts, concept_scores,
-    hasComments, hasGoodNaming, hasPrompt, conceptCoverageScore, lang,
-    testResult
+    hasComments, hasGoodNaming, meaningfulComments, hasExtraFunctions,
+    conceptCoverageScore, lang, testResult, runnerStatus
   })
 
   // ── Storm v4: AI feedback (Gemini → DeepSeek fallback) ───────────────────
@@ -663,12 +730,19 @@ function checkGoodNaming(code) {
 
 function buildFeedback({ code, status, total, t1, t2, t3, maxT1, maxT2, maxT3,
     hasInfiniteLoop, hasOffByOne, hasMultipleIf, isAI, aiResult,
-    concepts, concept_scores, hasComments, hasGoodNaming, hasPrompt,
-    conceptCoverageScore, lang, testResult = {} }) {
+    concepts, concept_scores, hasComments, hasGoodNaming, meaningfulComments, hasExtraFunctions,
+    conceptCoverageScore, lang, testResult = {}, runnerStatus = 'NO_TEST_CASES' }) {
   const parts = []
   const { passCount = 0, totalCount = 0, errors: tcErrors = [] } = testResult
 
   // ── Storm v4: Test Case Results ────────────────────────────────
+  // 4.5: Hien thi runner status ro rang
+  if (runnerStatus === 'RUNNER_DISABLED' && totalCount === 0) {
+    parts.push('⚠️ Runner bi tat tren production. T1 tinh theo concept coverage (co giam).Giao vien: bat ENABLE_LOCAL_RUNNER=true.')
+  } else if (runnerStatus === 'COMPILE_FAILED') {
+    parts.push('❌ COMPILE ERROR: Code khong bien dich duoc. T1 = 5%. Kiem tra cu phap C++.')
+  }
+
   if (totalCount > 0) {
     const allPass = passCount === totalCount
     const icon = allPass ? '✅' : passCount > 0 ? '⚠️' : '❌'

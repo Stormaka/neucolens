@@ -137,7 +137,9 @@ app.use((err, req, res, _next) => {
 // ── Start ─────────────────────────────────────────────────────────────────────
 async function start() {
   getDb()
-  const shouldSeedDemo = true
+  // 4.14 Fix: đọc từ env thay vì hardcode true
+  // Local dev: mặc định seed; Production: phải set SEED_DEMO_DATA=true tường minh
+  const shouldSeedDemo = process.env.NODE_ENV !== 'production' || process.env.SEED_DEMO_DATA === 'true'
   if (shouldSeedDemo) await seedDatabase()
 
   // Check g++ on startup — thử nhiều path
