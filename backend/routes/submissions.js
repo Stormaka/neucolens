@@ -240,6 +240,44 @@ router.patch('/:id/override', authenticate, requireRole('teacher'), (req, res) =
   res.json({ ...clean, misconceptions: JSON.parse(misconceptions_json || '[]') })
 })
 
+// POST /api/submissions/:id/rate-feedback — Đánh giá chất lượng phản hồi AI (Ground Truth Evaluation)
+router.post('/:id/rate-feedback', authenticate, (req, res) => {
+  const { rating, comment, helpfulness_category } = req.body
+  const numericRating = Number(rating)
+  if (!numericRating || numericRating < 1 || numericRating > 5) {
+    return res.status(400).json({ error: 'Đánh giá phải từ 1 đến 5 sao', code: 'INVALID_RATING' })
+  }
+
+  const db = getDb()
+  const sub = db.prepare('SELECT * FROM submissions WHERE id=?').get(req.params.id)
+  if (!sub) return res.status(404).json({ error: 'Không tìm thấy bài nộp', status: 404 })
+
+  if (req.user.role === 'student' && sub.student_id !== req.user.id) {
+    return res.status(403).json({ error: 'Bạn chỉ được đánh giá phản hồi bài nộp của chính mình' })
+  }
+
+  const result = db.prepare(`
+    INSERT INTO feedback_ratings (submission_id, user_id, user_role, rating, comment, helpfulness_category)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(
+    req.params.id,
+    req.user.id,
+    req.user.role,
+    numericRating,
+    comment || '',
+    helpfulness_category || 'helpful'
+  )
+
+  res.status(201).json({
+    success: true,
+    rating_id: result.lastInsertRowid,
+    submission_id: Number(req.params.id),
+    rating: numericRating,
+    message: 'Cảm ơn bạn đã đánh giá phản hồi AI!'
+  })
+})
+
+
 // GET /api/submissions/:id — polling result (phải ở sau các named routes)
 // 4.12c Fix: student chỉ xem submission của chính mình; teacher chỉ xem lớp mình quản lý
 router.get('/:id', authenticate, (req, res) => {

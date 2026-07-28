@@ -10,6 +10,8 @@ import os from 'os'
 import https from 'https'
 import crypto from 'crypto'
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { parseCppAST } from './astParser.js'
+
 
 // ── Gemini Flash client ────────────────────────────────────────────────────────
 const GEMINI_KEY = process.env.GEMINI_API_KEY || ''
@@ -343,43 +345,45 @@ function cleanCodeForAnalysis(code) {
   return cleaned
 }
 
-// ── Tính điểm concept thực chất (Hardened & Context-Aware) ───────────────────
-function scoreConcept(concept, rawCode) {
+// ── Tính điểm concept thực chất (AST & Context-Aware) ───────────────────────
+function scoreConcept(concept, rawCode, cachedAst = null) {
+  const ast = cachedAst || parseCppAST(rawCode)
   const cleanedCode = cleanCodeForAnalysis(rawCode)
 
-  // Nested Loops: kiểm tra bằng brace-depth counter thực sự
-  // Vòng lặp lồng nhau = khi đang trong thân của 1 loop thì gặp 1 loop khác
+  // Nested Loops: Dựa trên AST maxNestDepth thực sự (loại bỏ lặp nối tiếp)
   if (concept === 'Nested Loops') {
-    let depth = 0, maxNestDepth = 0, inLoop = false
-    const loopRe = /\b(for|while)\s*\(/
-    const lines = cleanedCode.split('\n')
-    for (const line of lines) {
-      const stripped = line.trim()
-      if (loopRe.test(stripped)) {
-        if (inLoop) maxNestDepth = Math.max(maxNestDepth, depth + 1)
-        inLoop = true
-      }
-      for (const ch of stripped) {
-        if (ch === '{') depth++
-        if (ch === '}') { depth--; if (depth <= 0) { depth = 0; inLoop = false } }
-      }
-    }
-    if (maxNestDepth >= 2) return 100
-    if (maxNestDepth === 1) return 80  // có lồng 1 tầng
-    return 0  // chỉ có loop nối tiếp, không có lồng
+    if (ast.maxNestDepth >= 2) return 100
+    if (ast.maxNestDepth === 1) return 30  // chỉ lồng 1 tầng hoặc nối tiếp
+    return 0
   }
 
-  // Recursion: hàm phải gọi lại chính mình
+  // Recursion: Dựa trên AST callGraph & direct/mutual recursion
   if (concept === 'Recursion') {
-    const fnDefs = [...cleanedCode.matchAll(/\b(\w{3,})\s*\([^)]*\)\s*\{/g)]
-    const fnNames = fnDefs.map(m => m[1]).filter(n => !['main', 'while', 'for', 'if'].includes(n))
-    const hasRecursion = fnNames.some(fn => {
-      const escaped = fn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      const matches = (cleanedCode.match(new RegExp(`\\b${escaped}\\s*\\(`, 'g')) || []).length
-      return matches >= 2
-    })
-    return hasRecursion ? 100 : 0
+    return ast.hasRecursion ? 100 : 0
   }
+
+  // Functions: Phải khai báo hàm riêng biệt ngoài main() trong AST
+  if (concept === 'Functions') {
+    const nonMainFuncs = ast.functions.filter(f => f.name !== 'main')
+    if (nonMainFuncs.length >= 2) return 100
+    if (nonMainFuncs.length === 1) return 85
+    return 0
+  }
+
+  // Arrays: Khai báo mảng/vector trong AST
+  if (concept === 'Arrays') {
+    if (ast.arrays.length >= 1) return 100
+    const hasIndexAccess = /\w+\s*\[\s*\w+\s*\]/.test(cleanedCode)
+    return hasIndexAccess ? 60 : 0
+  }
+
+  // Loops: Có ít nhất 1 loop trong AST
+  if (concept === 'Loops') {
+    if (ast.loops.length >= 2) return 100
+    if (ast.loops.length === 1) return 80
+    return 0
+  }
+
 
   // Arrays: chỉ tính nếu khai báo mảng thực sự và truy cập chỉ mục
   if (concept === 'Arrays') {
@@ -577,80 +581,77 @@ export async function analyzeCode(code, assignment, studentName = '') {
     }
   }
 
-  // 4.2 Fix: T1 = 70% test case execution + 30% concept coverage
-  // Tang trong so test case (correctness phai den tu execution)
-  let t1
+  // ── Bước 4: Tính T1 — Functional Correctness (Execution 100%) ─────────────
+  // Khắc phục double-counting: T1 thuần túy đo tính đúng đắn khi thực thi test cases
+  let t1 = 0
   if (runnerStatus === 'SUCCESS' && testResult.totalCount > 0) {
     const testPassRate = testResult.passCount / testResult.totalCount
-    const t1TestPart = Math.round(maxT1 * 0.70 * testPassRate)
-    const t1ConceptPart = Math.round(maxT1 * 0.30 * conceptCoverageScore / 100)
-    t1 = t1TestPart + t1ConceptPart
+    t1 = Math.round(maxT1 * testPassRate)
   } else if (runnerStatus === 'RUNNER_DISABLED' && testCases.length > 0) {
-    // Co test case nhung runner tat: giam xuong 40% concept (co hinh phat)
-    t1 = Math.round(maxT1 * 0.40 * conceptCoverageScore / 100)
+    // Trình chạy bị tắt trên serverless: tính 50% baseline cho việc hoàn thành bài
+    t1 = Math.round(maxT1 * 0.50)
   } else if (runnerStatus === 'COMPILE_FAILED') {
-    t1 = Math.round(maxT1 * 0.05)  // chi 5% compile attempt
+    t1 = 0  // Lỗi biên dịch -> 0 điểm đúng đắn
   } else {
-    // NO_TEST_CASES hoac RUNNER_TIMEOUT: 100% concept coverage
-    t1 = Math.round(maxT1 * conceptCoverageScore / 100)
+    // Không có test cases: Đánh giá bằng cấu trúc thực thi C++ tối thiểu
+    const ast = parseCppAST(code)
+    const hasSyntax = ast.hasMain || ast.functions.length > 0
+    t1 = hasSyntax ? Math.round(maxT1 * 0.8) : 0
   }
 
   if (hasInfiniteLoop) {
     t1 = Math.round(t1 * 0.2)
-    misconceptions.push('Vong lap vo han \u2014 while loop thieu lenh cap nhat bien')
+    misconceptions.push('Vòng lặp vô hạn — while loop thiếu lệnh cập nhật biến')
   } else if (hasOffByOne) {
     t1 = Math.round(t1 * 0.7)
-    misconceptions.push('Off-by-one error \u2014 dung i<=n thay vi i<n khi duyet mang C++')
+    misconceptions.push('Off-by-one error — dùng i<=n thay vì i<n khi duyệt mảng C++')
   } else if (hasMultipleIf) {
     t1 = Math.round(t1 * 0.75)
-    misconceptions.push('Nhieu if doc lap thay vi if-else chain')
+    misconceptions.push('Nhiều if độc lập thay vì if-else chain')
   }
 
-
   // ── Bước 5: Tính T2 — Code Quality (4.3 Fix) ───────────────────────────
-  // Bo return0 va linecount (vo nghia), dung tieu chi chat luong thuc su
   const hasComments = /\/\/[^\n]+|\/\*[\s\S]*?\*\//.test(code)
   const hasGoodNaming = checkGoodNaming(code)
 
-  // Comment co y nghia (>=5 ky tu, khong chi la khai bao bien)
   const meaningfulComments = (() => {
     const coms = code.match(/\/\/[^\n]{5,}/g) || []
     return coms.filter(c => !/^\/\/\s*(int|double|float|cout|cin|\d+)\b/.test(c)).length > 0
   })()
 
-  // Co ham rieng biet ngoai main (tach logic ra ham)
-  const hasExtraFunctions = (() => {
-    const cl = cleanCodeForAnalysis(code)
-    return [...cl.matchAll(/\b(?:void|int|double|float|bool|string)\s+(\w+)\s*\([^)]*\)\s*\{/g)]
-      .some(m => m[1] !== 'main')
-  })()
+  const ast = parseCppAST(code)
+  const hasExtraFunctions = ast.functions.filter(f => f.name !== 'main').length > 0
 
-  // Do phuc tap nhanh hop ly (1-20 branch -> khong qua lo, khong qua phuc tap)
   const branchCount = (code.match(/\b(if|else if|for|while|case)\b/g) || []).length
   const isReasonableComplexity = branchCount >= 1 && branchCount <= 20
 
   let t2Quality = 0
-  if (meaningfulComments) t2Quality += 35   // comment giai thich
-  if (hasGoodNaming)      t2Quality += 40   // ten bien co y nghia
-  if (hasExtraFunctions)  t2Quality += 15   // co ham rieng biet
-  if (isReasonableComplexity) t2Quality += 10 // do phuc tap hop ly
+  if (meaningfulComments) t2Quality += 35
+  if (hasGoodNaming)      t2Quality += 40
+  if (hasExtraFunctions)  t2Quality += 15
+  if (isReasonableComplexity) t2Quality += 10
 
   const t2 = Math.round(maxT2 * t2Quality / 100)
-  // 4.11 Fix: AI suspicion chi flag de giao vien review, KHONG tu dong tru diem T2
 
-  // ── Bước 6: Tính T3 — Computational Thinking ─────────────────────────────
-  // Dựa trên concept scores thực
+  // ── Bước 6: Tính T3 — Computational Thinking & AST Big-O Complexity ──────
+  // T3 tập trung 100% vào Tư duy lập trình, Khái niệm & Độ phức tạp thuật toán (Big-O)
   let t3 = 0
   if (concepts.length > 0) {
     const covered = concepts.filter(c => (concept_scores[c] || 0) >= 60).length
     const partial = concepts.filter(c => (concept_scores[c] || 0) >= 30 && (concept_scores[c] || 0) < 60).length
-    t3 = Math.round(maxT3 * (covered + partial * 0.5) / concepts.length)
+    const conceptRatio = (covered + partial * 0.5) / concepts.length
+
+    // T3 = 70% Concept Mastery + 30% Algorithmic Efficiency (Big-O)
+    let bigOBonus = 1.0
+    if (['O(N^3)', 'O(2^N)'].includes(ast.estimatedBigO)) bigOBonus = 0.6  // phạt thuật toán chậm
+    else if (['O(1)', 'O(log N)', 'O(N)'].includes(ast.estimatedBigO)) bigOBonus = 1.0
+
+    t3 = Math.round(maxT3 * (conceptRatio * 0.70 + bigOBonus * 0.30))
   } else {
-    // No concepts: check general logic
-    const hasAlgorithm = /for.*for|while.*if|recursion/.test(code)
-    t3 = hasAlgorithm ? Math.round(maxT3 * 0.8) : Math.round(maxT3 * 0.4)
+    t3 = ast.hasMain ? Math.round(maxT3 * 0.7) : Math.round(maxT3 * 0.3)
   }
   if (hasInfiniteLoop) t3 = Math.round(t3 * 0.3)
+
 
   // ── Bước 7: Tổng điểm ────────────────────────────────────────────────────
   const total = Math.min(100, Math.max(0, t1 + t2 + t3))
@@ -785,9 +786,6 @@ function buildFeedback({ code, status, total, t1, t2, t3, maxT1, maxT2, maxT3,
   if (!hasGoodNaming) {
     parts.push(`💡 Đặt tên biến có nghĩa hơn (VD: soLuong, banKinh, ketQua thay vì biến 1 ký tự).`)
   }
-  if (!hasPrompt) {
-    parts.push(`💡 Thêm thông báo trước mỗi lệnh cin (VD: cout << "Nhap n: "; cin >> n;).`)
-  }
 
   if (isAI) {
     parts.push(`🚨 CẢNH BÁO AI: Code sử dụng kỹ thuật nâng cao chưa học (${Math.round(aiResult.confidence * 100)}% confidence). Giảng viên sẽ xem xét.`)
@@ -824,31 +822,28 @@ function detectInfiniteLoop(code) {
   return false
 }
 
-function detectOffByOne(code, concepts) {
+function detectOffByOne(code, concepts = []) {
   const arrConcepts = ['Arrays', 'Linear Search', 'Sorting Algorithm']
-  // Only check off-by-one IF assignment involves Array indexing
-  if (!concepts.some(c => arrConcepts.includes(c))) return false
+  const safeConcepts = concepts || []
+  if (!safeConcepts.some(c => arrConcepts.includes(c))) return false
 
   const cleaned = cleanCodeForAnalysis(code)
-  // Check if code has array indexing access like a[i] inside for (int i = 0; i <= n; i++)
   const hasZeroStartLoop = /for\s*\(\s*int\s+(\w+)\s*=\s*0\s*;\s*\1\s*<=\s*(\w+)\s*;/.test(cleaned)
   const hasArrayIndexWithLoopVar = /\w+\s*\[\s*[a-zA-Z_]\w*\s*\]/.test(cleaned)
 
   return hasZeroStartLoop && hasArrayIndexWithLoopVar
 }
 
-function detectMultipleIfChain(code, concepts) {
-  // Only check multiple if chain IF assignment involves grade/score Classification
-  if (!concepts.includes('Conditionals')) return false
+function detectMultipleIfChain(code, concepts = []) {
+  const safeConcepts = concepts || []
+  if (!safeConcepts.includes('Conditionals')) return false
 
   const cleaned = cleanCodeForAnalysis(code)
   const lines = cleaned.split('\n').filter(l => /^\s*if\s*\(/.test(l))
   
-  // Check if multiple independent ifs test the SAME variable (e.g. if (d >= 8) ... if (d >= 6.5))
   if (lines.length >= 3 && !cleaned.includes('else if')) {
     const varsTested = lines.map(l => l.match(/if\s*\(\s*([a-zA-Z_]\w*)/)?.[1]).filter(Boolean)
     const uniqueVars = new Set(varsTested)
-    // Same variable tested 3+ times independently -> classification misconception
     if (uniqueVars.size === 1) return true
   }
 

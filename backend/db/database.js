@@ -143,6 +143,18 @@ function initSchema() {
       UNIQUE(student_id, assignment_id)
     );
 
+    -- Ground Truth & AI Feedback Evaluation table
+    CREATE TABLE IF NOT EXISTS feedback_ratings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      submission_id INTEGER NOT NULL REFERENCES submissions(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      user_role TEXT NOT NULL CHECK(user_role IN ('student','teacher')),
+      rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
+      comment TEXT,
+      helpfulness_category TEXT DEFAULT 'helpful',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
     -- Storm v4: AI_Messages
     CREATE TABLE IF NOT EXISTS ai_messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -220,22 +232,82 @@ const SC = {
 }
 
 const TC = {
-  w1:  [{input:'5',expected:'Dien tich hinh tron: 78.5398'},{input:'1',expected:'Dien tich hinh tron: 3.14159'}],
-  w2:  [{input:'8.5',expected:'Hoc luc: Gioi'},{input:'7',expected:'Hoc luc: Kha'},{input:'5',expected:'Hoc luc: Trung binh'},{input:'3',expected:'Hoc luc: Yeu'}],
-  w3:  [{input:'3',expected:'* \n* * \n* * * '},{input:'1',expected:'* '}],
-  w4:  [{input:'5\n3 1 4 1 5',expected:'Max: 5\nMin: 1'},{input:'3\n7 2 9',expected:'Max: 9\nMin: 2'}],
-  w5:  [{input:'5',expected:'5! = 120'},{input:'0',expected:'0! = 1'},{input:'10',expected:'10! = 3628800'}],
-  w6:  [{input:'4\n3 1 4 2',expected:'Mang sau sap xep: 1 2 3 4 '},{input:'3\n5 2 8',expected:'Mang sau sap xep: 2 5 8 '}],
-  w7:  [{input:'Hello World',expected:'So nguyen am: 3'},{input:'aeiou',expected:'So nguyen am: 5'}],
-  w8:  [{input:'10',expected:'So nguyen to den 10: 2 3 5 7 '},{input:'20',expected:'So nguyen to den 20: 2 3 5 7 11 13 17 19 '}],
-  w9:  [{input:'12 18',expected:'UCLN: 6\nBCNN: 36'},{input:'5 7',expected:'UCLN: 1\nBCNN: 35'}],
-  w10: [],
-  w11: [{input:'5\n3 7 2 8 1\n7',expected:'Tim thay tai vi tri 1'},{input:'4\n1 2 3 4\n9',expected:'Khong tim thay'}],
-  w12: [],
-  w13: [{input:'4 5',expected:'S = 20\nC = 18'}],
-  w14: [],
-  w15: [{input:'5\n3 1 4 1 5',expected:'1 1 3 4 5 '},{input:'3\n7 2 8',expected:'2 7 8 '}],
+  w1:  [
+    { input: '5', expected: 'Dien tich hinh tron: 78.5398', hidden: false },
+    { input: '1', expected: 'Dien tich hinh tron: 3.14159', hidden: false },
+    { input: '0', expected: 'Dien tich hinh tron: 0', hidden: true },
+    { input: '10', expected: 'Dien tich hinh tron: 314.159', hidden: true }
+  ],
+  w2:  [
+    { input: '8.5', expected: 'Hoc luc: Gioi', hidden: false },
+    { input: '7', expected: 'Hoc luc: Kha', hidden: false },
+    { input: '5', expected: 'Hoc luc: Trung binh', hidden: false },
+    { input: '3', expected: 'Hoc luc: Yeu', hidden: false },
+    { input: '10.0', expected: 'Hoc luc: Gioi', hidden: true },
+    { input: '0.0', expected: 'Hoc luc: Yeu', hidden: true }
+  ],
+  w3:  [
+    { input: '3', expected: '* \n* * \n* * * ', hidden: false },
+    { input: '1', expected: '* ', hidden: false },
+    { input: '5', expected: '* \n* * \n* * * \n* * * * \n* * * * * ', hidden: true }
+  ],
+  w4:  [
+    { input: '5\n3 1 4 1 5', expected: 'Max: 5\nMin: 1', hidden: false },
+    { input: '3\n7 2 9', expected: 'Max: 9\nMin: 2', hidden: false },
+    { input: '1\n42', expected: 'Max: 42\nMin: 42', hidden: true },
+    { input: '4\n-5 -1 -10 -2', expected: 'Max: -1\nMin: -10', hidden: true }
+  ],
+  w5:  [
+    { input: '5', expected: '5! = 120', hidden: false },
+    { input: '0', expected: '0! = 1', hidden: false },
+    { input: '10', expected: '10! = 3628800', hidden: true },
+    { input: '1', expected: '1! = 1', hidden: true }
+  ],
+  w6:  [
+    { input: '4\n3 1 4 2', expected: 'Mang sau sap xep: 1 2 3 4 ', hidden: false },
+    { input: '3\n5 2 8', expected: 'Mang sau sap xep: 2 5 8 ', hidden: false },
+    { input: '5\n9 8 7 6 5', expected: 'Mang sau sap xep: 5 6 7 8 9 ', hidden: true }
+  ],
+  w7:  [
+    { input: 'Hello World', expected: 'So nguyen am: 3', hidden: false },
+    { input: 'aeiou', expected: 'So nguyen am: 5', hidden: false },
+    { input: 'bcdfg', expected: 'So nguyen am: 0', hidden: true }
+  ],
+  w8:  [
+    { input: '10', expected: 'So nguyen to den 10: 2 3 5 7 ', hidden: false },
+    { input: '20', expected: 'So nguyen to den 20: 2 3 5 7 11 13 17 19 ', hidden: false },
+    { input: '2', expected: 'So nguyen to den 2: 2 ', hidden: true }
+  ],
+  w9:  [
+    { input: '12 18', expected: 'UCLN: 6\nBCNN: 36', hidden: false },
+    { input: '5 7', expected: 'UCLN: 1\nBCNN: 35', hidden: false },
+    { input: '100 25', expected: 'UCLN: 25\nBCNN: 100', hidden: true }
+  ],
+  w10: [
+    { input: '2\nAn\n9.0\nBinh\n8.5', expected: 'SV diem cao nhat: An (9)', hidden: true }
+  ],
+  w11: [
+    { input: '5\n3 7 2 8 1\n7', expected: 'Tim thay tai vi tri 1', hidden: false },
+    { input: '4\n1 2 3 4\n9', expected: 'Khong tim thay', hidden: false },
+    { input: '3\n10 20 30\n10', expected: 'Tim thay tai vi tri 0', hidden: true }
+  ],
+  w12: [
+    { input: '5', expected: 'Noi dung file: 1 2 3 4 5 ', hidden: true }
+  ],
+  w13: [
+    { input: '4 5', expected: 'S = 20\nC = 18', hidden: false },
+    { input: '10 10', expected: 'S = 100\nC = 40', hidden: true }
+  ],
+  w14: [
+    { input: '3\n10 20 30', expected: '30 20 10 ', hidden: true }
+  ],
+  w15: [
+    { input: '5\n3 1 4 1 5', expected: '1 1 3 4 5 ', hidden: false },
+    { input: '3\n7 2 8', expected: '2 7 8 ', hidden: false },
+    { input: '4\n100 -50 0 25', expected: '-50 0 25 100 ', hidden: true }
+  ],
 }
+
 
 const ASGN_15 = [
   { title:'Tuần 1: Biến & Nhập xuất',        desc:'Tính diện tích hình tròn. Nhập r, xuất S=π×r².', cons:'["Variables","I/O","Arithmetic"]', wk:'w1', st:'closed', dl:'2026-02-23T23:59' },
