@@ -313,7 +313,7 @@ export default function StudentDashboard() {
 
         {/* ── Tabs ── */}
         <div className="tabs" style={{ marginBottom: '24px' }}>
-          {[['asgn', '📋 Bài tập của tôi'], ['submit', '📤 Nộp bài'], ['profile', '🎯 Hồ sơ Năng lực']].map(([id, lbl]) => (
+          {[['asgn', '📋 Bài tập của tôi'], ['profile', '🎯 Hồ sơ Năng lực']].map(([id, lbl]) => (
             <button key={id} className={`tab ${activeTab === id ? 'active' : ''}`} onClick={() => setActiveTab(id)}>{lbl}</button>
           ))}
         </div>
@@ -329,7 +329,7 @@ export default function StudentDashboard() {
                 const sub = mySubs[a.id]
                 const sb = sub ? (STATUS_BADGE[sub.status] || STATUS_BADGE.pending) : null
                 const isOpen = a.status === 'open'
-                const scoreDisplay = sub ? (sub.score_total !== null ? `${sub.score_total}/100` : 'Chưa chấm T1') : null
+                const scoreDisplay = sub && sub.score_total !== null && sub.score_total !== undefined ? `${sub.score_total}/100` : 'Chưa chấm T1'
 
                 return (
                   <div key={a.id} className="card card-sm" style={{
@@ -470,6 +470,14 @@ export default function StudentDashboard() {
         {/* ── TAB: SUBMIT ── */}
         {activeTab === 'submit' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }} className="animate-fade-in">
+
+            {/* Back to assignment list header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '-6px' }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setActiveTab('asgn')} style={{ fontWeight: 600, fontSize: '.84rem' }}>
+                ← Quay lại Danh sách bài tập
+              </button>
+              {selAsgn && <span className="badge bdp" style={{ fontSize: '.78rem' }}>📌 Bài đang nộp: {selAsgn.title}</span>}
+            </div>
 
             {/* Top row: selector + code editor side by side */}
             <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '18px', alignItems: 'start' }} className="g2">
