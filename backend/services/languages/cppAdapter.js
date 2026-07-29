@@ -39,12 +39,19 @@ export const cppAdapter = {
         // AST-extracted functions, excluding main(); check body is non-empty and called
         const nonMain = ast.functions.filter(f => f.name !== 'main')
         if (!nonMain.length) return 0
+        
+        // Remove declaration headers (e.g. void fake(int x)) to count real calls
+        let cleanedWithoutDecls = cleaned
+        nonMain.forEach(fn => {
+          cleanedWithoutDecls = cleanedWithoutDecls.replace(new RegExp(`\\b(void|int|double|float|bool|string|long\\s+long|long)\\s+${fn.name}\\s*\\([^)]*\\)`, 'g'), '')
+        })
+
         const activeFuncs = nonMain.filter(fn => {
           const body = (fn.bodyOnly || '').trim()
-          const params = (fn.params || '').trim()
-          if (!body && !params) return false  // empty function no params — stub/garbage
-          const callCount = (cleaned.match(new RegExp(`\\b${fn.name}\\s*\\(`, 'g')) || []).length
-          return callCount >= 1 || body.includes('return') || params.length > 0
+          if (!body || body === ';') return false // empty body stub
+          // Check if called elsewhere in code (e.g. main or another function)
+          const callCount = (cleanedWithoutDecls.match(new RegExp(`\\b${fn.name}\\s*\\(`, 'g')) || []).length
+          return callCount >= 1
         })
         if (activeFuncs.length >= 2) return 100
         if (activeFuncs.length === 1) return 80
@@ -52,12 +59,14 @@ export const cppAdapter = {
       }
 
       case 'Arrays': {
-        // Must both declare AND access an array/vector
+        // Must both declare AND access an array/vector (excluding declaration syntax like int a[10];)
         const hasDecl = ast.arrays.length >= 1
-        const hasIndexAccess = /\w+\s*\[\s*\w+\s*\]/.test(cleaned)
+        const cleanedWithoutDecls = cleaned.replace(/\b(int|double|float|char|string|bool|long)\s+[a-zA-Z_]\w*\s*\[[^\]]*\]/g, '')
+        const hasIndexAccess = /\b[a-zA-Z_]\w*\s*\[\s*[^\]]+\s*\]/.test(cleanedWithoutDecls)
         const hasRangeFor = /for\s*\([^:]+:\s*\w+\s*\)/.test(cleaned)
         if (hasDecl && (hasIndexAccess || hasRangeFor)) return 100
-        if (hasDecl || hasIndexAccess) return 50
+        if (hasDecl) return 30  // declared but never indexed or iterated
+        if (hasIndexAccess) return 50
         return 0
       }
 

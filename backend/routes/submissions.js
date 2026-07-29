@@ -252,15 +252,35 @@ router.patch('/:id/override', authenticate, requireRole('teacher'), (req, res) =
   const maxT2 = asgn?.weight_t2 ?? 35
   const maxT3 = asgn?.weight_t3 ?? 25
 
-  const newT1 = score_t1 !== undefined ? Number(score_t1) : sub.score_t1
+  const newT1 = (score_t1 !== undefined && score_t1 !== null) ? Number(score_t1) : sub.score_t1
   const newT2 = score_t2 !== undefined ? Number(score_t2) : sub.score_t2
   const newT3 = score_t3 !== undefined ? Number(score_t3) : sub.score_t3
 
-  if (newT1 < 0 || newT1 > maxT1) return res.status(400).json({ error: `score_t1 phải từ 0–${maxT1}`, code: 'INVALID_SCORE' })
-  if (newT2 < 0 || newT2 > maxT2) return res.status(400).json({ error: `score_t2 phải từ 0–${maxT2}`, code: 'INVALID_SCORE' })
-  if (newT3 < 0 || newT3 > maxT3) return res.status(400).json({ error: `score_t3 phải từ 0–${maxT3}`, code: 'INVALID_SCORE' })
+  if (newT1 !== null && (!Number.isFinite(newT1) || newT1 < 0 || newT1 > maxT1)) {
+    return res.status(400).json({ error: `score_t1 phải là số hợp lệ từ 0–${maxT1}`, code: 'INVALID_SCORE' })
+  }
+  if (!Number.isFinite(newT2) || newT2 < 0 || newT2 > maxT2) {
+    return res.status(400).json({ error: `score_t2 phải là số hợp lệ từ 0–${maxT2}`, code: 'INVALID_SCORE' })
+  }
+  if (!Number.isFinite(newT3) || newT3 < 0 || newT3 > maxT3) {
+    return res.status(400).json({ error: `score_t3 phải là số hợp lệ từ 0–${maxT3}`, code: 'INVALID_SCORE' })
+  }
 
-  const newTotal = score_total !== undefined ? Math.min(100, Math.max(0, Number(score_total))) : (newT1 + newT2 + newT3)
+  const validStatuses = ['pending', 'passed', 'warning', 'failed']
+  if (status !== undefined && !validStatuses.includes(status)) {
+    return res.status(400).json({ error: `status phải thuộc: ${validStatuses.join(', ')}`, code: 'INVALID_STATUS' })
+  }
+
+  if (llm_feedback !== undefined && (typeof llm_feedback !== 'string' || llm_feedback.length > 5000)) {
+    return res.status(400).json({ error: 'llm_feedback phải là chuỗi không quá 5000 ký tự', code: 'INVALID_FEEDBACK' })
+  }
+
+  const expectedTotal = (newT1 !== null ? newT1 : 0) + newT2 + newT3
+  if (score_total !== undefined && (!Number.isFinite(Number(score_total)) || Number(score_total) !== expectedTotal)) {
+    return res.status(400).json({ error: `score_total (${score_total}) phải bằng tổng T1+T2+T3 (${expectedTotal})`, code: 'INVALID_TOTAL' })
+  }
+
+  const newTotal = score_total !== undefined ? Number(score_total) : expectedTotal
   const newStatus = status || (newTotal >= 70 ? 'passed' : newTotal >= 50 ? 'warning' : 'failed')
   const newFeedback = llm_feedback !== undefined ? llm_feedback : sub.llm_feedback
 
@@ -273,6 +293,47 @@ router.patch('/:id/override', authenticate, requireRole('teacher'), (req, res) =
   const { misconceptions_json, ...clean } = updated
   res.json({ ...clean, misconceptions: JSON.parse(misconceptions_json || '[]') })
 })
+
+export async function recoverPendingSubmissions() {
+  const db = getDb()
+  const pendings = db.prepare(`
+    SELECT s.*, a.title, a.description, a.concepts_json, a.weight_t1, a.weight_t2, a.weight_t3, a.test_cases_json, a.lang, u.name as student_name
+    FROM submissions s
+    JOIN assignments a ON s.assignment_id = a.id
+    JOIN users u ON s.student_id = u.id
+    WHERE s.status = 'pending'
+  `).all()
+
+  if (!pendings.length) return
+
+  console.log(`⏳ [Recovery] Found ${pendings.length} pending submission(s). Re-grading...`)
+  for (const sub of pendings) {
+    try {
+      const asgn = {
+        title: sub.title, description: sub.description, lang: sub.lang,
+        concepts: JSON.parse(sub.concepts_json || '[]'),
+        test_cases_json: sub.test_cases_json,
+        weight_t1: sub.weight_t1, weight_t2: sub.weight_t2, weight_t3: sub.weight_t3
+      }
+      const analysis = await analyzeCode(sub.code, asgn, sub.student_name || '')
+      db.prepare(`
+        UPDATE submissions SET score_total=?, score_t1=?, score_t2=?, score_t3=?, status=?,
+          llm_feedback=?, ai_suspicion_flag=?, ai_suspicion_confidence=?, ai_suspicion_reason=?,
+          misconceptions_json=?
+        WHERE id=?
+      `).run(
+        analysis.score_total, analysis.score_t1, analysis.score_t2, analysis.score_t3, analysis.status,
+        analysis.llm_feedback, analysis.ai_suspicion_flag, analysis.ai_suspicion_confidence,
+        analysis.ai_suspicion_reason, analysis.misconceptions_json, sub.id
+      )
+      console.log(`✅ [Recovery] Successfully graded submission #${sub.id}`)
+    } catch (e) {
+      console.error(`❌ [Recovery] Failed to recover submission #${sub.id}:`, e.message)
+      db.prepare(`UPDATE submissions SET status='failed', llm_feedback=? WHERE id=?`)
+        .run('Lỗi phân tích bài nộp sau khi khởi động lại server.', sub.id)
+    }
+  }
+}
 
 // POST /api/submissions/:id/rate-feedback — Đánh giá chất lượng phản hồi AI
 router.post('/:id/rate-feedback', authenticate, async (req, res) => {

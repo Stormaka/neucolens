@@ -81,21 +81,37 @@ export function parseCppAST(code) {
       const matches = (fn.bodyOnly.match(callRegex) || []).length
       if (matches > 0) {
         callGraph[fn.name].push(otherFn.name)
-        if (fn.name === otherFn.name && fn.name !== 'main') {
-          hasRecursion = true
-        }
       }
     })
   })
 
-  // Detect mutual recursion: A -> B and B -> A
-  functions.forEach(fnA => {
-    (callGraph[fnA.name] || []).forEach(fnBName => {
-      if (fnA.name !== fnBName && callGraph[fnBName]?.includes(fnA.name)) {
-        hasRecursion = true
+  // DFS Cycle Detection across callGraph for arbitrary cycle lengths (A -> B -> C -> A)
+  const visitedNodes = new Set()
+  const recStack = new Set()
+
+  function dfsCycle(node) {
+    visitedNodes.add(node)
+    recStack.add(node)
+    const neighbors = callGraph[node] || []
+    for (const neighbor of neighbors) {
+      if (!visitedNodes.has(neighbor)) {
+        if (dfsCycle(neighbor)) return true
+      } else if (recStack.has(neighbor)) {
+        return true
       }
-    })
-  })
+    }
+    recStack.delete(node)
+    return false
+  }
+
+  for (const fnName of Object.keys(callGraph)) {
+    if (fnName !== 'main' && !visitedNodes.has(fnName)) {
+      if (dfsCycle(fnName)) {
+        hasRecursion = true
+        break
+      }
+    }
+  }
 
   // 3. Track Loop Nesting via character-by-character scan (handles same-line nesting)
   let maxLoopNestDepth = 0
@@ -178,6 +194,17 @@ export function parseCppAST(code) {
     arrays.push({ name: vMatch[2], type: vMatch[1], size: 'dynamic', isVector: true })
   }
 
+  // Check if any loop has a dynamic (variable) upper bound e.g. i < n vs constant i < 10
+  let hasDynamicLoopBound = false
+  const loopBoundRegex = /\b(?:for|while)\s*\([^;)]*;\s*[^;)]*?[<>=!]+\s*([a-zA-Z_]\w*)/g
+  let boundMatch
+  while ((boundMatch = loopBoundRegex.exec(cleanCode)) !== null) {
+    if (!/^\d+$/.test(boundMatch[1])) {
+      hasDynamicLoopBound = true
+      break
+    }
+  }
+
   // 5. Estimate Big-O Time Complexity
   let estimatedBigO = 'O(1)'
   if (hasRecursion) {
@@ -191,6 +218,9 @@ export function parseCppAST(code) {
     } else {
       estimatedBigO = 'O(N)'
     }
+  } else if (!hasDynamicLoopBound && maxLoopNestDepth > 0) {
+    // All loops have constant bounds (e.g. 0..10), complexity is O(1)
+    estimatedBigO = 'O(1)'
   } else if (maxLoopNestDepth >= 3) {
     estimatedBigO = 'O(N^3)'
   } else if (maxLoopNestDepth === 2) {

@@ -13,13 +13,16 @@
 import { analyzeCode } from '../services/llmService.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Ground Truth Dataset (25 mẫu, 5 loại bài)
+// Internal Regression Benchmark Dataset (24 mẫu thử nghiệm nội bộ)
+// 📌 Ghi chú phương pháp: Đây là bộ test hồi quy quy tắc nội bộ (Regression Benchmark)
+// giúp đảm bảo các hàm phân tích AST & adapter không bị tụt lùi khi nâng cấp code.
 // ─────────────────────────────────────────────────────────────────────────────
 const GROUND_TRUTH = [
   // === NHÓM 1: Vòng lặp & I/O ===
   {
     label: 'loop_io_perfect',
     concepts: ['Loops', 'I/O', 'Variables'],
+    test_cases_json: '[{"input":"3","expected":"1\\n2\\n3"}]',
     code: `#include <iostream>
 using namespace std;
 int main() {
@@ -60,6 +63,7 @@ int main() { cout << "Hello"; return 0; }`,
   {
     label: 'recursion_factorial',
     concepts: ['Recursion', 'Functions', 'Base Case'],
+    test_cases_json: '[{"input":"","expected":"120"}]',
     code: `#include <iostream>
 using namespace std;
 int factorial(int n) {
@@ -91,6 +95,7 @@ int main() { int a[]={5,3,1,4,2}; sapXep(a,5); return 0; }`,
   {
     label: 'nested_loop_real',
     concepts: ['Nested Loops', 'Pattern Printing'],
+    test_cases_json: '[{"input":"","expected":"*\\n**\\n***\\n****\\n*****"}]',
     code: `#include <iostream>
 using namespace std;
 int main() {
@@ -142,6 +147,7 @@ void a(){} void b(){} int main(){ return 0; }`,
   {
     label: 'functions_real',
     concepts: ['Functions', 'Variables'],
+    test_cases_json: '[{"input":"","expected":"8 4"}]',
     code: `#include <iostream>
 using namespace std;
 int tinh_tong(int a, int b) { return a + b; }
@@ -170,6 +176,7 @@ int main() { int x; cin>>x; if(x){} else{} return 0; }`,
   {
     label: 'conditionals_real_elseif',
     concepts: ['Conditionals', 'I/O'],
+    test_cases_json: '[{"input":"75","expected":"Kha"}]',
     code: `#include <iostream>
 using namespace std;
 int main() {
@@ -189,6 +196,7 @@ int main() {
   {
     label: 'array_linear_search',
     concepts: ['Arrays', 'Linear Search', 'Loops'],
+    test_cases_json: '[{"input":"3 10 20 30 20","expected":"1"}]',
     code: `#include <iostream>
 using namespace std;
 int main() {
@@ -212,6 +220,7 @@ int main() {
   {
     label: 'bubble_sort',
     concepts: ['Sorting Algorithm', 'Arrays', 'Nested Loops'],
+    test_cases_json: '[{"input":"3 3 1 2","expected":"1 2 3 "}]',
     code: `#include <iostream>
 using namespace std;
 int main() {
@@ -233,9 +242,10 @@ int main() {
   {
     label: 'oop_basic_class',
     concepts: ['OOP', 'Functions'],
+    test_cases_json: '[{"input":"","expected":"15 16"}]',
     code: `#include <iostream>
 using namespace std;
-class HinhChu Nhat {
+class HinhChuNhat {
 public:
     double chieuDai, chieuRong;
     double dienTich() { return chieuDai * chieuRong; }
@@ -274,12 +284,13 @@ int main() {
   {
     label: 'pointers_basic',
     concepts: ['Pointers', 'Variables'],
+    test_cases_json: '[{"input":"","expected":"10 20"}]',
     code: `#include <iostream>
 using namespace std;
 int main() {
     int x = 10;
     int *ptr = &x;
-    cout << *ptr << " " << ptr;
+    cout << *ptr << " ";
     *ptr = 20;
     cout << x;
     return 0;
@@ -291,6 +302,7 @@ int main() {
   {
     label: 'memory_new_delete',
     concepts: ['Memory Management', 'Pointers'],
+    test_cases_json: '[{"input":"","expected":"0 2 4 6 8 "}]',
     code: `#include <iostream>
 using namespace std;
 int main() {
@@ -309,13 +321,14 @@ int main() {
   {
     label: 'string_manipulation',
     concepts: ['String Manipulation', 'I/O'],
+    test_cases_json: '[{"input":"hello","expected":"5 hel 1"}]',
     code: `#include <iostream>
 #include <string>
 using namespace std;
 int main() {
     string s;
     getline(cin, s);
-    cout << s.length() << " " << s.substr(0, 3) << " " << s.find('a');
+    cout << s.length() << " " << s.substr(0, 3) << " " << s.find('e');
     return 0;
 }`,
     expected_status: 'passed',
@@ -327,6 +340,7 @@ int main() {
   {
     label: 'boolean_logic',
     concepts: ['Boolean Logic', 'Conditionals'],
+    test_cases_json: '[{"input":"5 3","expected":"Ca hai duong"}]',
     code: `#include <iostream>
 using namespace std;
 int main() {
@@ -372,6 +386,7 @@ int main() {
   {
     label: 'arithmetic_basic',
     concepts: ['Arithmetic', 'Variables', 'I/O'],
+    test_cases_json: '[{"input":"10 2","expected":"12 8 20 5"}]',
     code: `#include <iostream>
 using namespace std;
 int main() {
@@ -434,7 +449,8 @@ function cohensKappa(predicted, actual, labels = ['passed', 'warning', 'failed']
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function runBenchmark() {
-  console.log('🔬 NEU CodeLens — Benchmark (Rule-Based Scoring, no actual test execution)')
+  console.log('🔬 NEU CodeLens — Internal Regression Benchmark (Offline Deterministic Scoring)')
+  console.log('📌 Kiểm thử hồi quy nội bộ quy tắc chấm AST & Adapter (Offline mode)')
   console.log('═'.repeat(70))
   
   const predictedScores = []
@@ -450,13 +466,13 @@ async function runBenchmark() {
   for (const sample of GROUND_TRUTH) {
     const fakeAssignment = {
       id: 0, title: sample.label, description: '', lang: 'C++', 
-      concepts: sample.concepts, test_cases_json: '[]',
+      concepts: sample.concepts, test_cases_json: sample.test_cases_json || '[]',
       weight_t1: 40, weight_t2: 35, weight_t3: 25
     }
     
     let result
     try {
-      result = await analyzeCode(sample.code, fakeAssignment, 'benchmark_student')
+      result = await analyzeCode(sample.code, fakeAssignment, 'benchmark_student', { skipLLM: true })
     } catch (err) {
       console.error(`  ❌ Error on ${sample.label}:`, err.message)
       continue
@@ -486,7 +502,8 @@ async function runBenchmark() {
     
     const icon = inRange ? '✅' : '❌'
     if (inRange) passed_count++; else failed_count++
-    console.log(`${icon} [${sample.label.padEnd(35)}] pred=${String(predicted).padStart(3)} status=${result.status.padEnd(7)} (expected: ${sample.expected_status})`)
+    const t1Info = result.score_t1 === null ? 'T1=null' : `T1=${result.score_t1}`
+    console.log(`${icon} [${sample.label.padEnd(35)}] pred=${String(predicted).padStart(3)} status=${result.status.padEnd(7)} ${t1Info.padEnd(10)} (expected: ${sample.expected_status})`)
   }
   
   console.log('\n' + '─'.repeat(70))

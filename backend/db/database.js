@@ -187,6 +187,14 @@ function runMigrations() {
   addCol('assignments', 'sample_code', 'TEXT DEFAULT ""')
   addCol('assignments', 'test_cases_json', 'TEXT DEFAULT "[]"')
   addCol('student_profiles', 'mastery_json', 'TEXT DEFAULT "{}"')
+  addCol('feedback_ratings', 'helpfulness_category', "TEXT DEFAULT 'helpful'")
+
+  // Migration for feedback_ratings unique constraint on legacy databases
+  try {
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_feedback_ratings_sub_user ON feedback_ratings(submission_id, user_id)`)
+  } catch (e) {
+    console.log('⚠️ Migration idx_feedback_ratings_sub_user skip:', e.message)
+  }
 
   // Backfill misconceptions from submissions
   try {

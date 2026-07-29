@@ -5,7 +5,7 @@ import { getDb, seedDatabase } from './db/database.js'
 import authRouter from './routes/auth.js'
 import classroomsRouter from './routes/classrooms.js'
 import assignmentsRouter from './routes/assignments.js'
-import submissionsRouter from './routes/submissions.js'
+import submissionsRouter, { recoverPendingSubmissions } from './routes/submissions.js'
 import profilesRouter from './routes/profiles.js'
 import chatsRouter from './routes/chats.js'
 import misconceptionsRouter from './routes/misconceptions.js'
@@ -127,8 +127,11 @@ app.use('/api/*', (_, res) => res.status(404).json({ error: 'API endpoint không
 app.use((err, req, res, _next) => {
   console.error('❌ Unhandled error:', err.message || err)
   const status = err.status || err.statusCode || 500
+  const message = (status === 500 && process.env.NODE_ENV === 'production')
+    ? 'Lỗi máy chủ nội bộ'
+    : (err.message || 'Lỗi máy chủ nội bộ')
   res.status(status).json({
-    error: err.message || 'Lỗi máy chủ nội bộ',
+    error: message,
     status,
     ...(process.env.NODE_ENV !== 'production' && { stack: err.stack })
   })
@@ -142,6 +145,13 @@ async function start() {
   // Local dev: mặc định seed; Production: phải set SEED_DEMO_DATA=true tường minh
   const shouldSeedDemo = process.env.NODE_ENV !== 'production' || process.env.SEED_DEMO_DATA === 'true'
   if (shouldSeedDemo) await seedDatabase()
+
+  // Recover any unfulfilled background grading jobs from previous crash/restart
+  try {
+    await recoverPendingSubmissions()
+  } catch (e) {
+    console.error('⚠️ [Recovery] Pending submissions recovery error:', e.message)
+  }
 
   // Check g++ on startup — thử nhiều path
   let gppStatus = '❌ Không khả dụng'

@@ -10,21 +10,23 @@ export const pythonAdapter = {
   parseAST(code) {
     if (!code) return { maxNestDepth: 0, functions: [], loops: [], hasRecursion: false, estimatedBigO: 'O(1)' }
     
-    // Lightweight Python indentation/nesting counter
+    // Lightweight Python indentation/nesting counter (normalized for function scope)
     const lines = code.split('\n')
-    let maxNestDepth = 0, currentDepth = 0
+    let maxNestDepth = 0
     const functions = []
     const loops = []
     let hasRecursion = false
+    let currentFnIndent = null
 
     lines.forEach((line, idx) => {
       const trimmed = line.trim()
       if (!trimmed || trimmed.startsWith('#')) return
       
       const indent = line.search(/\S/)
-      if (indent >= 0) currentDepth = Math.floor(indent / 4) + 1
+      const rawDepth = indent >= 0 ? Math.floor(indent / 4) + 1 : 1
 
       if (/^def\s+(\w+)\s*\(/.test(trimmed)) {
+        currentFnIndent = indent
         const fnName = trimmed.match(/^def\s+(\w+)/)?.[1]
         if (fnName) {
           functions.push({ name: fnName, line: idx })
@@ -34,9 +36,15 @@ export const pythonAdapter = {
         }
       }
 
+      if (currentFnIndent !== null && indent <= currentFnIndent && !/^def\b/.test(trimmed)) {
+        currentFnIndent = null
+      }
+
       if (/^(for|while)\b/.test(trimmed)) {
-        loops.push({ line: idx, depth: currentDepth })
-        if (currentDepth > maxNestDepth) maxNestDepth = currentDepth
+        const fnBaseDepth = currentFnIndent !== null ? Math.floor(currentFnIndent / 4) + 1 : 0
+        const loopDepth = Math.max(1, rawDepth - fnBaseDepth)
+        loops.push({ line: idx, depth: loopDepth })
+        if (loopDepth > maxNestDepth) maxNestDepth = loopDepth
       }
     })
 

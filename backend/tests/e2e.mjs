@@ -69,11 +69,27 @@ try {
   const teacherSubmit = await json('/submissions', { method: 'POST', headers: authHeaders(rotated.body.access_token), body: JSON.stringify({ assignment_id: 15, code: 'int main(){return 0;}' }) })
   assert(teacherSubmit.response.status === 403, 'Teacher vẫn có thể nộp bài')
   const bad = await json('/submissions', { method: 'POST', headers: authHeaders(studentToken), body: JSON.stringify({ assignment_id: 15, code: 'abc xyz' }) })
-  assert(bad.response.status === 201 && bad.body.score_total === 0 && bad.body.status === 'failed', 'Code rác vẫn được điểm')
+  let badBody = bad.body
+  if (bad.response.status === 202) {
+    for (let i = 0; i < 20; i++) {
+      await new Promise(r => setTimeout(r, 150))
+      const res = await json(`/submissions/me/15`, { headers: authHeaders(studentToken) })
+      if (res.body?.[0] && res.body[0].status !== 'pending') { badBody = res.body[0]; break }
+    }
+  }
+  assert((bad.response.status === 201 || bad.response.status === 202) && badBody.score_total === 0 && badBody.status === 'failed', 'Code rác vẫn được điểm')
 
   const goodCode = '#include <iostream>\n#include <vector>\n#include <algorithm>\nusing namespace std;\nint main(){int n;cin>>n;vector<int>a(n);for(int &x:a)cin>>x;sort(a.begin(),a.end());for(int x:a)cout<<x<<" ";return 0;}'
   const good = await json('/submissions', { method: 'POST', headers: authHeaders(studentToken), body: JSON.stringify({ assignment_id: 15, code: goodCode }) })
-  assert(good.response.status === 201 && good.body.score_total > bad.body.score_total && good.body.status !== 'pending', 'Chấm bài hợp lệ lỗi')
+  let goodBody = good.body
+  if (good.response.status === 202) {
+    for (let i = 0; i < 20; i++) {
+      await new Promise(r => setTimeout(r, 150))
+      const res = await json(`/submissions/me/15`, { headers: authHeaders(studentToken) })
+      if (res.body?.[0] && res.body[0].status !== 'pending') { goodBody = res.body[0]; break }
+    }
+  }
+  assert((good.response.status === 201 || good.response.status === 202) && goodBody.score_total > badBody.score_total && goodBody.status !== 'pending', 'Chấm bài hợp lệ lỗi')
 
   const historyBefore = await json('/chats/15/messages', { headers: authHeaders(studentToken) })
   const chat = await json('/chats/15/ask', { method: 'POST', headers: authHeaders(studentToken), body: JSON.stringify({ content: 'Hãy nhận xét bài gần nhất của tôi' }) })

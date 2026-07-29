@@ -282,6 +282,104 @@ async function runCppTestCases(code, testCases) {
   return { passCount, totalCount: testCases.length, errors }
 }
 
+/**
+ * Chạy code Python với test case thực — trả về % test pass
+ * @param {string} code - Source code Python
+ * @param {Array} testCases - [{input: string, expected: string}]
+ * @returns {Promise<{ passCount: number, totalCount: number, errors: string[] }>}
+ */
+async function runPythonTestCases(code, testCases) {
+  if (!testCases || testCases.length === 0) return { passCount: 0, totalCount: 0, errors: [] }
+  const localRunnerAllowed = process.env.ENABLE_LOCAL_RUNNER === 'true' || process.env.NODE_ENV !== 'production'
+  if (!localRunnerAllowed) {
+    return { passCount: 0, totalCount: 0, errors: ['Trình chạy mã native đang tắt trong production; cần môi trường sandbox chuyên dụng.'] }
+  }
+
+  const dangerousPatterns = [
+    /\bos\s*\./i,
+    /\bsys\s*\./i,
+    /\bsubprocess\b/i,
+    /\beval\s*\(/i,
+    /\bexec\s*\(/i,
+    /\b__import__\b/i,
+    /\bopen\s*\(/i,
+    /\bsocket\b/i
+  ]
+  const cleanedForScan = cleanCodeForAnalysis(code)
+  if (dangerousPatterns.some(pat => pat.test(cleanedForScan))) {
+    return {
+      passCount: 0,
+      totalCount: testCases.length,
+      errors: ['🔴 AN NINH: Mã nguồn Python chứa thư viện/lệnh hệ thống bị cấm (os, sys, subprocess, eval, open...).']
+    }
+  }
+
+  const PY_CMDS = ['python3', 'python', 'py']
+  let PY_CMD = null
+  for (const py of PY_CMDS) {
+    try {
+      execSync(`"${py}" --version`, { timeout: 3000, stdio: 'pipe' })
+      PY_CMD = py
+      break
+    } catch { }
+  }
+
+  if (!PY_CMD) {
+    return { passCount: 0, totalCount: 0, errors: ['Python interpreter không khả dụng trên hệ thống.'] }
+  }
+
+  const tmpDir = os.tmpdir()
+  const randomSuffix = crypto.randomBytes(4).toString('hex')
+  const srcFile = path.join(tmpDir, `neu_code_${Date.now()}_${randomSuffix}.py`)
+
+  let passCount = 0
+  const errors = []
+
+  try {
+    fs.writeFileSync(srcFile, code, 'utf8')
+
+    for (const tc of testCases) {
+      try {
+        const runResult = spawnSync(PY_CMD, [srcFile], {
+          input: tc.input || '',
+          timeout: 2000,
+          encoding: 'utf8',
+        })
+
+        if (runResult.status === null) {
+          if (tc.hidden) errors.push(`Test #${testCases.indexOf(tc) + 1} (Hidden): Timeout`)
+          else errors.push(`Test "${tc.input?.substring(0, 20)}": Timeout`)
+          continue
+        }
+
+        if (runResult.status !== 0) {
+          if (tc.hidden) errors.push(`Test #${testCases.indexOf(tc) + 1} (Hidden): Runtime Error`)
+          else errors.push(`Test "${tc.input?.substring(0, 20)}": ${(runResult.stderr || 'Runtime error').substring(0, 100)}`)
+          continue
+        }
+
+        const actual = (runResult.stdout || '').trim().replace(/\r/g, '')
+        const expected = (tc.expected || '').trim()
+
+        const numActual = parseFloat(actual), numExpected = parseFloat(expected)
+        const isClose = !isNaN(numActual) && !isNaN(numExpected) && Math.abs(numActual - numExpected) < 0.001
+        if (actual === expected || isClose) {
+          passCount++
+        } else {
+          if (tc.hidden) errors.push(`Test #${testCases.indexOf(tc) + 1} (Hidden): Wrong Answer`)
+          else errors.push(`Test "${tc.input?.substring(0, 20)}": got "${actual}", expected "${expected}"`)
+        }
+      } catch {
+        errors.push(`Test crash`)
+      }
+    }
+  } finally {
+    try { fs.unlinkSync(srcFile) } catch {}
+  }
+
+  return { passCount, totalCount: testCases.length, errors }
+}
+
 // ── Concept keyword library ───────────────────────────────────────────────────
 const CONCEPT_KEYWORDS = {
   'Variables': ['int ', 'double ', 'float ', 'string ', 'char ', 'bool ', 'long '],
@@ -367,7 +465,7 @@ function scoreConcept(concept, rawCode, cachedAst = null, lang = 'C++') {
 
 // ── Main analysis function ────────────────────────────────────────────────────
 
-export async function analyzeCode(code, assignment, studentName = '') {
+export async function analyzeCode(code, assignment, studentName = '', options = {}) {
   const concepts = assignment.concepts || []
   const lang = assignment.lang || 'C++'
   const maxT1 = assignment.weight_t1 || 40
@@ -407,7 +505,7 @@ export async function analyzeCode(code, assignment, studentName = '') {
 
   const hasInfiniteLoop = detectInfiniteLoop(code)
   const hasOffByOne = detectOffByOne(code, concepts)
-  const hasMultipleIf = detectMultipleIfChain(code)
+  const hasMultipleIf = detectMultipleIfChain(code, concepts)
   const aiResult = detectAIGenerated(code, concepts, lang)
   const misconceptions = []
 
@@ -444,24 +542,38 @@ export async function analyzeCode(code, assignment, studentName = '') {
       } else {
         runnerStatus = 'SUCCESS'
       }
+    } else if (lang === 'Python') {
+      testResult = await runPythonTestCases(code, testCases)
+      if (testResult.errors.some(e => e.includes('Timeout'))) {
+        runnerStatus = 'RUNNER_TIMEOUT'
+      } else if (testResult.errors.some(e => e.includes('Runtime Error') || e.includes('AN NINH'))) {
+        runnerStatus = 'RUNTIME_ERROR'
+      } else {
+        runnerStatus = 'SUCCESS'
+      }
     }
   }
 
-  // ── Bước 5: Tính T1 — Functional Correctness (Switched by Runner Status) ────
-  let t1 = 0
+  // ── Bước 5: Tính T1 — Functional Correctness (Strict Execution Check) ────
+  let t1 = null
+  let isT1Evaluated = false
+
   switch (runnerStatus) {
     case 'SUCCESS':
       if (testResult.totalCount > 0) {
+        isT1Evaluated = true
         const testPassRate = testResult.passCount / testResult.totalCount
         t1 = Math.round(maxT1 * testPassRate)
       } else {
-        t1 = (ast.hasMain || ast.functions?.length > 0) ? Math.round(maxT1 * 0.8) : 0
+        t1 = null
+        isT1Evaluated = false
       }
       break
 
     case 'COMPILE_FAILED':
     case 'RUNTIME_ERROR':
     case 'RUNNER_TIMEOUT':
+      isT1Evaluated = true
       t1 = 0
       if (runnerStatus === 'RUNNER_TIMEOUT') {
         misconceptions.push('Thời gian thực thi vượt quá 2000ms (Timeout)')
@@ -469,26 +581,24 @@ export async function analyzeCode(code, assignment, studentName = '') {
       break
 
     case 'RUNNER_DISABLED':
-      // Không cho điểm T1 cố định khi runner bị tắt — dùng conceptCoverageScore làm proxy
-      // tối đa 60% maxT1 để phân biệt rõ với code có test pass thực sự
-      t1 = Math.round(maxT1 * Math.min(0.60, conceptCoverageScore / 100))
-      break
-
     case 'NO_TEST_CASES':
     default:
-      t1 = (ast.hasMain || (ast.functions && ast.functions.length > 0)) ? Math.round(maxT1 * 0.8) : 0
+      t1 = null
+      isT1Evaluated = false
       break
   }
 
-  if (hasInfiniteLoop) {
-    t1 = Math.round(t1 * 0.2)
-    misconceptions.push('Vòng lặp vô hạn — while loop thiếu lệnh cập nhật biến')
-  } else if (hasOffByOne) {
-    t1 = Math.round(t1 * 0.7)
-    misconceptions.push('Off-by-one error — dùng i<=n thay vì i<n khi duyệt mảng C++')
-  } else if (hasMultipleIf) {
-    t1 = Math.round(t1 * 0.75)
-    misconceptions.push('Nhiều if độc lập thay vì if-else chain')
+  if (isT1Evaluated && t1 !== null) {
+    if (hasInfiniteLoop) {
+      t1 = Math.round(t1 * 0.2)
+      misconceptions.push('Vòng lặp vô hạn — while loop thiếu lệnh cập nhật biến')
+    } else if (hasOffByOne) {
+      t1 = Math.round(t1 * 0.7)
+      misconceptions.push('Off-by-one error — dùng i<=n thay vì i<n khi duyệt mảng C++')
+    } else if (hasMultipleIf) {
+      t1 = Math.round(t1 * 0.75)
+      misconceptions.push('Nhiều if độc lập thay vì if-else chain')
+    }
   }
 
   // ── Bước 5: Tính T2 — Code Quality (4.3 Fix) ───────────────────────────
@@ -535,7 +645,10 @@ export async function analyzeCode(code, assignment, studentName = '') {
 
 
   // ── Bước 7: Tổng điểm ────────────────────────────────────────────────────
-  const total = Math.min(100, Math.max(0, t1 + t2 + t3))
+  const total = (t1 !== null)
+    ? Math.min(100, Math.max(0, t1 + t2 + t3))
+    : Math.min(100, Math.max(0, Math.round((t2 + t3) / (maxT2 + maxT3) * 100)))
+
   const status = total >= 70 ? 'passed' : total >= 50 ? 'warning' : 'failed'
 
   const ruleFeedback = buildFeedback({
@@ -549,10 +662,12 @@ export async function analyzeCode(code, assignment, studentName = '') {
 
   // ── Storm v4: AI feedback (Gemini → DeepSeek fallback) ───────────────────
   let llm_feedback = ruleFeedback
-  const aiFb = await getAIFeedback(code, { ...assignment, concepts }, { total, t1, t2, t3, misconceptions })
-  if (aiFb) {
-    const providerLabel = aiFb.provider === 'deepseek' ? '🧠 Nhận xét từ DeepSeek AI' : '💬 Nhận xét từ Gemini AI'
-    llm_feedback = ruleFeedback + `\n\n${providerLabel}:\n` + aiFb.text
+  if (!options.skipLLM) {
+    const aiFb = await getAIFeedback(code, { ...assignment, concepts }, { total, t1: t1 ?? 0, t2, t3, misconceptions })
+    if (aiFb) {
+      const providerLabel = aiFb.provider === 'deepseek' ? '🧠 Nhận xét từ DeepSeek AI' : '💬 Nhận xét từ Gemini AI'
+      llm_feedback = ruleFeedback + `\n\n${providerLabel}:\n` + aiFb.text
+    }
   }
 
   return {
