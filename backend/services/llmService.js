@@ -501,12 +501,13 @@ export async function analyzeCode(code, assignment, studentName = '', options = 
 
   // ── Bước 3: AST Parsing & Phân tích ngôn ngữ ─────────────────────────────
   const adapter = getLanguageAdapter(lang)
+  const normalizedLang = adapter ? adapter.lang : lang
   const ast = adapter.parseAST(code)
 
   const hasInfiniteLoop = detectInfiniteLoop(code)
   const hasOffByOne = detectOffByOne(code, concepts)
   const hasMultipleIf = detectMultipleIfChain(code, concepts)
-  const aiResult = detectAIGenerated(code, concepts, lang)
+  const aiResult = detectAIGenerated(code, concepts, normalizedLang)
   const misconceptions = []
 
   let conceptCoverageScore = 0
@@ -533,7 +534,7 @@ export async function analyzeCode(code, assignment, studentName = '', options = 
     const localRunnerAllowed = process.env.ENABLE_LOCAL_RUNNER === 'true' || process.env.NODE_ENV !== 'production'
     if (!localRunnerAllowed) {
       runnerStatus = 'RUNNER_DISABLED'
-    } else if (lang === 'C++') {
+    } else if (normalizedLang === 'C++') {
       testResult = await runCppTestCases(code, testCases)
       if (testResult.errors.some(e => e.includes('compile') || e.includes('Compile'))) {
         runnerStatus = 'COMPILE_FAILED'
@@ -542,7 +543,7 @@ export async function analyzeCode(code, assignment, studentName = '', options = 
       } else {
         runnerStatus = 'SUCCESS'
       }
-    } else if (lang === 'Python') {
+    } else if (normalizedLang === 'Python') {
       testResult = await runPythonTestCases(code, testCases)
       if (testResult.errors.some(e => e.includes('Timeout'))) {
         runnerStatus = 'RUNNER_TIMEOUT'
@@ -644,12 +645,18 @@ export async function analyzeCode(code, assignment, studentName = '', options = 
   if (hasInfiniteLoop) t3 = Math.round(t3 * 0.3)
 
 
-  // ── Bước 7: Tổng điểm ────────────────────────────────────────────────────
-  const total = (t1 !== null)
-    ? Math.min(100, Math.max(0, t1 + t2 + t3))
-    : Math.min(100, Math.max(0, Math.round((t2 + t3) / (maxT2 + maxT3) * 100)))
+  // ── Bước 7: Tổng điểm & Trạng thái chính thức ──────────────────────────────
+  // Bài nộp chưa được kiểm tra tính đúng đắn qua runner (t1 === null) sẽ không được cấp status 'passed'
+  let total = null
+  let status = 'ungraded'
 
-  const status = total >= 70 ? 'passed' : total >= 50 ? 'warning' : 'failed'
+  if (t1 !== null) {
+    total = Math.min(100, Math.max(0, t1 + t2 + t3))
+    status = total >= 70 ? 'passed' : total >= 50 ? 'warning' : 'failed'
+  } else {
+    total = null
+    status = 'ungraded'
+  }
 
   const ruleFeedback = buildFeedback({
     code, status, total, t1, t2, t3, maxT1, maxT2, maxT3,

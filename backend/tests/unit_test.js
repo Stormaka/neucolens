@@ -192,6 +192,32 @@ group('astParser: Recursion — no false positive from signature', () => {
 })
 
 // ─────────────────────────────────────────────────────────
+// 10. Python Adapter — Recursion false-positive fix
+// ─────────────────────────────────────────────────────────
+group('pythonAdapter: Recursion — no false positive from outside calls', () => {
+  const pyAdapter = getLanguageAdapter('Python')
+  const nonRecursiveCode = `
+def calculate(x):
+    return x + 1
+
+print(calculate(3))
+`
+  const astNonRec = pyAdapter.parseAST(nonRecursiveCode)
+  assert('Python normal function call outside body NOT flagged as recursion', astNonRec.hasRecursion === false, `hasRecursion=${astNonRec.hasRecursion}`)
+
+  const recursiveCode = `
+def factorial(n):
+    if n <= 1:
+        return 1
+    return n * factorial(n - 1)
+
+print(factorial(5))
+`
+  const astRec = pyAdapter.parseAST(recursiveCode)
+  assert('Python self-call inside body correctly flagged as recursion', astRec.hasRecursion === true, `hasRecursion=${astRec.hasRecursion}`)
+})
+
+// ─────────────────────────────────────────────────────────
 // Summary
 // ─────────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(50)}`)

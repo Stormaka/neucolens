@@ -189,11 +189,17 @@ function runMigrations() {
   addCol('student_profiles', 'mastery_json', 'TEXT DEFAULT "{}"')
   addCol('feedback_ratings', 'helpfulness_category', "TEXT DEFAULT 'helpful'")
 
-  // Migration for feedback_ratings unique constraint on legacy databases
+  // Migration for feedback_ratings unique constraint on legacy databases: deduplicate first
   try {
+    db.exec(`
+      DELETE FROM feedback_ratings 
+      WHERE id NOT IN (
+        SELECT MAX(id) FROM feedback_ratings GROUP BY submission_id, user_id
+      )
+    `)
     db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_feedback_ratings_sub_user ON feedback_ratings(submission_id, user_id)`)
   } catch (e) {
-    console.log('⚠️ Migration idx_feedback_ratings_sub_user skip:', e.message)
+    console.error('❌ Migration idx_feedback_ratings_sub_user error:', e.message)
   }
 
   // Backfill misconceptions from submissions

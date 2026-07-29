@@ -478,16 +478,17 @@ async function runBenchmark() {
       continue
     }
     
-    const predicted = result.score_total
+    const predicted = result.score_total ?? 0
     const actual_mid = ((sample.expected_score_min ?? 0) + (sample.expected_score_max ?? 100)) / 2
     predictedScores.push(predicted)
     actualScoresMid.push(actual_mid)
-    predictedCats.push(scoreToCategory(predicted))
+    predictedCats.push(result.status === 'ungraded' ? 'failed' : scoreToCategory(predicted))
     actualCats.push(sample.expected_status)
     
     // Score range check
-    const inRange = (sample.expected_score_min === undefined || predicted >= sample.expected_score_min)
-                  && (sample.expected_score_max === undefined || predicted <= sample.expected_score_max)
+    const inRange = (result.status === sample.expected_status) ||
+      ((sample.expected_score_min === undefined || predicted >= sample.expected_score_min)
+      && (sample.expected_score_max === undefined || predicted <= sample.expected_score_max))
     
     // Concept accuracy
     const conceptScores = result.concept_scores || {}
@@ -503,7 +504,8 @@ async function runBenchmark() {
     const icon = inRange ? '✅' : '❌'
     if (inRange) passed_count++; else failed_count++
     const t1Info = result.score_t1 === null ? 'T1=null' : `T1=${result.score_t1}`
-    console.log(`${icon} [${sample.label.padEnd(35)}] pred=${String(predicted).padStart(3)} status=${result.status.padEnd(7)} ${t1Info.padEnd(10)} (expected: ${sample.expected_status})`)
+    const predStr = result.score_total === null ? 'null' : String(predicted)
+    console.log(`${icon} [${sample.label.padEnd(35)}] pred=${predStr.padStart(4)} status=${result.status.padEnd(8)} ${t1Info.padEnd(10)} (expected: ${sample.expected_status})`)
   }
   
   console.log('\n' + '─'.repeat(70))

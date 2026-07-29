@@ -71,61 +71,18 @@ router.post('/', authenticate, requireRole('student'), async (req, res) => {
     return res.status(409).json({ error: 'Lỗi tạo bài nộp. Vui lòng thử lại.', code: 'INSERT_FAILED' })
   }
 
-  // Helper function để thực thi grading & lưu kết quả
-  const runGrading = async () => {
-    try {
-      const analysis = await analyzeCode(
-        code,
-        { ...asgn, concepts: JSON.parse(asgn.concepts_json || '[]') },
-        req.user.name
-      )
-      db.prepare(`
-        UPDATE submissions SET score_total=?, score_t1=?, score_t2=?, score_t3=?, status=?,
-          llm_feedback=?, ai_suspicion_flag=?, ai_suspicion_confidence=?, ai_suspicion_reason=?,
-          misconceptions_json=?
-        WHERE id=?
-      `).run(
-        analysis.score_total, analysis.score_t1, analysis.score_t2, analysis.score_t3, analysis.status,
-        analysis.llm_feedback, analysis.ai_suspicion_flag, analysis.ai_suspicion_confidence,
-        analysis.ai_suspicion_reason, analysis.misconceptions_json, subId
-      )
-      const detectedMisconceptions = JSON.parse(analysis.misconceptions_json || '[]')
-      if (detectedMisconceptions.length > 0) {
-        const insertMisc = db.prepare(
-          'INSERT OR IGNORE INTO misconceptions (student_id, assignment_id, classroom_id, concept, description) VALUES (?,?,?,?,?)'
-        )
-        detectedMisconceptions.forEach(desc => {
-          const concept = desc.split('—')[0].replace(/^[🔴⚠️📌⭐💡🚨\s]+/, '').trim().substring(0, 100)
-          try { insertMisc.run(req.user.id, assignment_id, asgn.classroom_id, concept, desc) } catch { }
-        })
-      }
-      updateStudentProfile(db, req.user.id, asgn.classroom_id,
-        JSON.parse(asgn.concepts_json || '[]'),
-        analysis.concept_scores || {}
-      )
-      return db.prepare('SELECT * FROM submissions WHERE id=?').get(subId)
-    } catch (err) {
-      console.error('LLM analysis error:', err)
-      db.prepare(`UPDATE submissions SET status='failed', llm_feedback=? WHERE id=?`)
-        .run('Lỗi phân tích. Vui lòng thử lại.', subId)
-      return null
-    }
-  }
-
-  // Trên Vercel Serverless: Phải chấm đồng bộ để không bị freeze container
+  // Durable lock-safe queue worker for submission grading
   const isServerless = Boolean(process.env.VERCEL)
   if (isServerless) {
-    const completedSub = await runGrading()
+    const completedSub = await processSubmissionGrading(subId)
     if (completedSub) {
       const { misconceptions_json, ...clean } = completedSub
       return res.status(201).json({ ...clean, misconceptions: JSON.parse(misconceptions_json || '[]') })
     }
     return res.status(201).json({ id: subId, status: 'failed', message: 'Lỗi phân tích bài nộp' })
   } else {
-    // Trên Node.js server thông thường: Trả  202 ngay và chấm async
-    // Dùng Promise microtask thay setImmediate — đảm bảo không bị drop khi container freeze
     res.status(202).json({ id: subId, status: 'pending', message: 'Bài nộp đang được phân tích...' })
-    Promise.resolve().then(runGrading).catch(err => console.error('Background grading error:', err))
+    processSubmissionGrading(subId).catch(err => console.error('Queue grading error:', err))
   }
 })
 
@@ -294,44 +251,78 @@ router.patch('/:id/override', authenticate, requireRole('teacher'), (req, res) =
   res.json({ ...clean, misconceptions: JSON.parse(misconceptions_json || '[]') })
 })
 
+const activeGradingJobs = new Set()
+
+export async function processSubmissionGrading(subId) {
+  if (activeGradingJobs.has(subId)) return null
+  activeGradingJobs.add(subId)
+
+  try {
+    const db = getDb()
+    const sub = db.prepare(`
+      SELECT s.*, a.title, a.description, a.concepts_json, a.weight_t1, a.weight_t2, a.weight_t3, a.test_cases_json, a.lang, a.classroom_id, u.name as student_name
+      FROM submissions s
+      JOIN assignments a ON s.assignment_id = a.id
+      JOIN users u ON s.student_id = u.id
+      WHERE s.id = ?
+    `).get(subId)
+
+    if (!sub || sub.status !== 'pending') return null
+
+    const asgn = {
+      title: sub.title, description: sub.description, lang: sub.lang,
+      concepts: JSON.parse(sub.concepts_json || '[]'),
+      test_cases_json: sub.test_cases_json,
+      weight_t1: sub.weight_t1, weight_t2: sub.weight_t2, weight_t3: sub.weight_t3
+    }
+
+    const analysis = await analyzeCode(sub.code, asgn, sub.student_name || '')
+    db.prepare(`
+      UPDATE submissions SET score_total=?, score_t1=?, score_t2=?, score_t3=?, status=?,
+        llm_feedback=?, ai_suspicion_flag=?, ai_suspicion_confidence=?, ai_suspicion_reason=?,
+        misconceptions_json=?
+      WHERE id=?
+    `).run(
+      analysis.score_total, analysis.score_t1, analysis.score_t2, analysis.score_t3, analysis.status,
+      analysis.llm_feedback, analysis.ai_suspicion_flag, analysis.ai_suspicion_confidence,
+      analysis.ai_suspicion_reason, analysis.misconceptions_json, subId
+    )
+
+    const detectedMisconceptions = JSON.parse(analysis.misconceptions_json || '[]')
+    if (detectedMisconceptions.length > 0) {
+      const insertMisc = db.prepare(
+        'INSERT OR IGNORE INTO misconceptions (student_id, assignment_id, classroom_id, concept, description) VALUES (?,?,?,?,?)'
+      )
+      detectedMisconceptions.forEach(desc => {
+        const concept = desc.split('—')[0].replace(/^[🔴⚠️📌⭐💡🚨\s]+/, '').trim().substring(0, 100)
+        try { insertMisc.run(sub.student_id, sub.assignment_id, sub.classroom_id, concept, desc) } catch { }
+      })
+    }
+
+    updateStudentProfile(db, sub.student_id, sub.classroom_id,
+      JSON.parse(sub.concepts_json || '[]'),
+      analysis.concept_scores || {}
+    )
+    return db.prepare('SELECT * FROM submissions WHERE id=?').get(subId)
+  } catch (err) {
+    console.error(`Analysis error for submission #${subId}:`, err)
+    getDb().prepare(`UPDATE submissions SET status='failed', llm_feedback=? WHERE id=?`)
+      .run('Lỗi phân tích bài nộp. Vui lòng thử lại.', subId)
+    return null
+  } finally {
+    activeGradingJobs.delete(subId)
+  }
+}
+
 export async function recoverPendingSubmissions() {
   const db = getDb()
-  const pendings = db.prepare(`
-    SELECT s.*, a.title, a.description, a.concepts_json, a.weight_t1, a.weight_t2, a.weight_t3, a.test_cases_json, a.lang, u.name as student_name
-    FROM submissions s
-    JOIN assignments a ON s.assignment_id = a.id
-    JOIN users u ON s.student_id = u.id
-    WHERE s.status = 'pending'
-  `).all()
+  const pendings = db.prepare(`SELECT id FROM submissions WHERE status = 'pending'`).all()
 
   if (!pendings.length) return
 
-  console.log(`⏳ [Recovery] Found ${pendings.length} pending submission(s). Re-grading...`)
+  console.log(`⏳ [Recovery] Found ${pendings.length} pending submission(s). Processing...`)
   for (const sub of pendings) {
-    try {
-      const asgn = {
-        title: sub.title, description: sub.description, lang: sub.lang,
-        concepts: JSON.parse(sub.concepts_json || '[]'),
-        test_cases_json: sub.test_cases_json,
-        weight_t1: sub.weight_t1, weight_t2: sub.weight_t2, weight_t3: sub.weight_t3
-      }
-      const analysis = await analyzeCode(sub.code, asgn, sub.student_name || '')
-      db.prepare(`
-        UPDATE submissions SET score_total=?, score_t1=?, score_t2=?, score_t3=?, status=?,
-          llm_feedback=?, ai_suspicion_flag=?, ai_suspicion_confidence=?, ai_suspicion_reason=?,
-          misconceptions_json=?
-        WHERE id=?
-      `).run(
-        analysis.score_total, analysis.score_t1, analysis.score_t2, analysis.score_t3, analysis.status,
-        analysis.llm_feedback, analysis.ai_suspicion_flag, analysis.ai_suspicion_confidence,
-        analysis.ai_suspicion_reason, analysis.misconceptions_json, sub.id
-      )
-      console.log(`✅ [Recovery] Successfully graded submission #${sub.id}`)
-    } catch (e) {
-      console.error(`❌ [Recovery] Failed to recover submission #${sub.id}:`, e.message)
-      db.prepare(`UPDATE submissions SET status='failed', llm_feedback=? WHERE id=?`)
-        .run('Lỗi phân tích bài nộp sau khi khởi động lại server.', sub.id)
-    }
+    await processSubmissionGrading(sub.id)
   }
 }
 

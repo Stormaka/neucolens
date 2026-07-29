@@ -16,27 +16,31 @@ export const pythonAdapter = {
     const functions = []
     const loops = []
     let hasRecursion = false
+    // 1. Parse functions and extract body content for recursion check
+    const fnBodies = {}
+    let activeFnName = null
+    let activeFnIndent = -1
     let currentFnIndent = null
 
     lines.forEach((line, idx) => {
       const trimmed = line.trim()
       if (!trimmed || trimmed.startsWith('#')) return
-      
       const indent = line.search(/\S/)
       const rawDepth = indent >= 0 ? Math.floor(indent / 4) + 1 : 1
 
       if (/^def\s+(\w+)\s*\(/.test(trimmed)) {
-        currentFnIndent = indent
-        const fnName = trimmed.match(/^def\s+(\w+)/)?.[1]
-        if (fnName) {
-          functions.push({ name: fnName, line: idx })
-          if (code.match(new RegExp(`\\b${fnName}\\s*\\(`, 'g'))?.length > 1) {
-            hasRecursion = true
-          }
+        const match = trimmed.match(/^def\s+(\w+)/)
+        if (match) {
+          activeFnName = match[1]
+          activeFnIndent = indent
+          currentFnIndent = indent
+          fnBodies[activeFnName] = ''
+          functions.push({ name: activeFnName, line: idx })
         }
-      }
-
-      if (currentFnIndent !== null && indent <= currentFnIndent && !/^def\b/.test(trimmed)) {
+      } else if (activeFnName && indent > activeFnIndent) {
+        fnBodies[activeFnName] += trimmed + '\n'
+      } else if (activeFnName && indent <= activeFnIndent && !/^def\b/.test(trimmed)) {
+        activeFnName = null
         currentFnIndent = null
       }
 
@@ -45,6 +49,15 @@ export const pythonAdapter = {
         const loopDepth = Math.max(1, rawDepth - fnBaseDepth)
         loops.push({ line: idx, depth: loopDepth })
         if (loopDepth > maxNestDepth) maxNestDepth = loopDepth
+      }
+    })
+
+    // Detect recursion strictly if function calls itself within its own body
+    functions.forEach(fn => {
+      const body = fnBodies[fn.name] || ''
+      const selfCallRegex = new RegExp(`\\b${fn.name}\\s*\\(`, 'g')
+      if (selfCallRegex.test(body)) {
+        hasRecursion = true
       }
     })
 
