@@ -12,6 +12,10 @@ function cleanCode(code) {
   return c
 }
 
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 export const cppAdapter = {
   lang: 'C++',
   extensions: ['.cpp', '.cc', '.cxx'],
@@ -43,14 +47,15 @@ export const cppAdapter = {
         // Remove declaration headers (e.g. void fake(int x)) to count real calls
         let cleanedWithoutDecls = cleaned
         nonMain.forEach(fn => {
-          cleanedWithoutDecls = cleanedWithoutDecls.replace(new RegExp(`\\b(void|int|double|float|bool|string|long\\s+long|long)\\s+${fn.name}\\s*\\([^)]*\\)`, 'g'), '')
+          const safeName = escapeRegex(fn.name)
+          cleanedWithoutDecls = cleanedWithoutDecls.replace(new RegExp(`\\b(void|int|double|float|bool|string|long\\s+long|long)\\s+${safeName}\\s*\\([^)]*\\)`, 'g'), '')
         })
 
         const activeFuncs = nonMain.filter(fn => {
           const body = (fn.bodyOnly || '').trim()
           if (!body || body === ';') return false // empty body stub
           // Check if called elsewhere in code (e.g. main or another function)
-          const callCount = (cleanedWithoutDecls.match(new RegExp(`\\b${fn.name}\\s*\\(`, 'g')) || []).length
+          const callCount = (cleanedWithoutDecls.match(new RegExp(`\\b${escapeRegex(fn.name)}\\s*\\(`, 'g')) || []).length
           return callCount >= 1
         })
         if (activeFuncs.length >= 2) return 100

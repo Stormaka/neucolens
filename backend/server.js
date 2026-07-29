@@ -138,6 +138,14 @@ app.use((err, req, res, _next) => {
 })
 
 
+// ── Process crash prevention handlers ─────────────────────────────────────────
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason?.message || reason)
+})
+process.on('uncaughtException', (err) => {
+  console.error('❌ Uncaught Exception:', err.message, err.stack)
+})
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 async function start() {
   getDb()

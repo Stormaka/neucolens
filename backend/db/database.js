@@ -33,6 +33,8 @@ export function getDb() {
   if (!db) {
     db = new Database(DB_PATH)
     db.pragma('journal_mode = WAL')
+    db.pragma('busy_timeout = 5000')
+    db.pragma('synchronous = NORMAL')
     db.pragma('foreign_keys = ON')
     initSchema()
     runMigrations()
@@ -228,6 +230,23 @@ function runMigrations() {
     }
   } catch (e) {
     console.error('⚠️ Submissions schema migration warning:', e.message)
+  }
+
+  // Performance Indexes for fast joins & filtered queries
+  try {
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_submissions_student ON submissions(student_id);
+      CREATE INDEX IF NOT EXISTS idx_submissions_asgn ON submissions(assignment_id);
+      CREATE INDEX IF NOT EXISTS idx_submissions_status ON submissions(status);
+      CREATE INDEX IF NOT EXISTS idx_submissions_grading ON submissions(grading_status);
+      CREATE INDEX IF NOT EXISTS idx_enrollments_student ON enrollments(student_id);
+      CREATE INDEX IF NOT EXISTS idx_enrollments_classroom ON enrollments(classroom_id);
+      CREATE INDEX IF NOT EXISTS idx_misconceptions_student ON misconceptions(student_id);
+      CREATE INDEX IF NOT EXISTS idx_misconceptions_classroom ON misconceptions(classroom_id);
+      CREATE INDEX IF NOT EXISTS idx_ai_messages_chat ON ai_messages(chat_id);
+    `)
+  } catch (e) {
+    console.error('⚠️ Index creation error:', e.message)
   }
 
   // Migration for feedback_ratings unique constraint on legacy databases: deduplicate first

@@ -22,6 +22,10 @@ export function tokenizeCpp(code) {
   return tokens
 }
 
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 export function parseCppAST(code) {
   if (!code || typeof code !== 'string') {
     return {
@@ -77,7 +81,7 @@ export function parseCppAST(code) {
   functions.forEach(fn => {
     callGraph[fn.name] = []
     functions.forEach(otherFn => {
-      const callRegex = new RegExp(`\\b${otherFn.name}\\s*\\(`, 'g')
+      const callRegex = new RegExp(`\\b${escapeRegex(otherFn.name)}\\s*\\(`, 'g')
       const matches = (fn.bodyOnly.match(callRegex) || []).length
       if (matches > 0) {
         callGraph[fn.name].push(otherFn.name)

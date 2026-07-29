@@ -55,7 +55,8 @@ export const pythonAdapter = {
     // Detect recursion strictly if function calls itself within its own body
     functions.forEach(fn => {
       const body = fnBodies[fn.name] || ''
-      const selfCallRegex = new RegExp(`\\b${fn.name}\\s*\\(`, 'g')
+      const safeName = fn.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const selfCallRegex = new RegExp(`\\b${safeName}\\s*\\(`, 'g')
       if (selfCallRegex.test(body)) {
         hasRecursion = true
       }
