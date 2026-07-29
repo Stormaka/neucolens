@@ -223,7 +223,7 @@ router.patch('/:id/override', authenticate, requireRole('teacher'), (req, res) =
     return res.status(400).json({ error: `score_t3 phải là số hợp lệ từ 0–${maxT3}`, code: 'INVALID_SCORE' })
   }
 
-  const validStatuses = ['pending', 'passed', 'warning', 'failed']
+  const validStatuses = ['pending', 'passed', 'warning', 'failed', 'ungraded']
   if (status !== undefined && !validStatuses.includes(status)) {
     return res.status(400).json({ error: `status phải thuộc: ${validStatuses.join(', ')}`, code: 'INVALID_STATUS' })
   }
@@ -232,13 +232,13 @@ router.patch('/:id/override', authenticate, requireRole('teacher'), (req, res) =
     return res.status(400).json({ error: 'llm_feedback phải là chuỗi không quá 5000 ký tự', code: 'INVALID_FEEDBACK' })
   }
 
-  const expectedTotal = (newT1 !== null ? newT1 : 0) + newT2 + newT3
-  if (score_total !== undefined && (!Number.isFinite(Number(score_total)) || Number(score_total) !== expectedTotal)) {
-    return res.status(400).json({ error: `score_total (${score_total}) phải bằng tổng T1+T2+T3 (${expectedTotal})`, code: 'INVALID_TOTAL' })
+  const expectedTotal = newT1 !== null ? (newT1 + newT2 + newT3) : null
+  if (score_total !== undefined && score_total !== null && (!Number.isFinite(Number(score_total)) || (expectedTotal !== null && Number(score_total) !== expectedTotal))) {
+    return res.status(400).json({ error: `score_total (${score_total}) không hợp lệ hoặc không bằng tổng T1+T2+T3`, code: 'INVALID_TOTAL' })
   }
 
-  const newTotal = score_total !== undefined ? Number(score_total) : expectedTotal
-  const newStatus = status || (newTotal >= 70 ? 'passed' : newTotal >= 50 ? 'warning' : 'failed')
+  const newTotal = score_total !== undefined ? (score_total !== null ? Number(score_total) : null) : expectedTotal
+  const newStatus = status || (newTotal !== null ? (newTotal >= 70 ? 'passed' : newTotal >= 50 ? 'warning' : 'failed') : 'ungraded')
   const newFeedback = llm_feedback !== undefined ? llm_feedback : sub.llm_feedback
 
   db.prepare(`
@@ -255,10 +255,19 @@ const activeGradingJobs = new Set()
 
 export async function processSubmissionGrading(subId) {
   if (activeGradingJobs.has(subId)) return null
+  const db = getDb()
+
+  // DB-backed atomic claim to prevent race conditions across multi-instance processes
+  const claimed = db.prepare(`
+    UPDATE submissions 
+    SET grading_status = 'processing' 
+    WHERE id = ? AND (status = 'pending' OR grading_status IN ('queued', 'failed'))
+  `).run(subId)
+
+  if (claimed.changes === 0) return null
   activeGradingJobs.add(subId)
 
   try {
-    const db = getDb()
     const sub = db.prepare(`
       SELECT s.*, a.title, a.description, a.concepts_json, a.weight_t1, a.weight_t2, a.weight_t3, a.test_cases_json, a.lang, a.classroom_id, u.name as student_name
       FROM submissions s
@@ -267,7 +276,7 @@ export async function processSubmissionGrading(subId) {
       WHERE s.id = ?
     `).get(subId)
 
-    if (!sub || sub.status !== 'pending') return null
+    if (!sub) return null
 
     const asgn = {
       title: sub.title, description: sub.description, lang: sub.lang,
@@ -278,7 +287,7 @@ export async function processSubmissionGrading(subId) {
 
     const analysis = await analyzeCode(sub.code, asgn, sub.student_name || '')
     db.prepare(`
-      UPDATE submissions SET score_total=?, score_t1=?, score_t2=?, score_t3=?, status=?,
+      UPDATE submissions SET score_total=?, score_t1=?, score_t2=?, score_t3=?, status=?, grading_status='completed',
         llm_feedback=?, ai_suspicion_flag=?, ai_suspicion_confidence=?, ai_suspicion_reason=?,
         misconceptions_json=?
       WHERE id=?
@@ -306,7 +315,7 @@ export async function processSubmissionGrading(subId) {
     return db.prepare('SELECT * FROM submissions WHERE id=?').get(subId)
   } catch (err) {
     console.error(`Analysis error for submission #${subId}:`, err)
-    getDb().prepare(`UPDATE submissions SET status='failed', llm_feedback=? WHERE id=?`)
+    getDb().prepare(`UPDATE submissions SET status='failed', grading_status='failed', llm_feedback=? WHERE id=?`)
       .run('Lỗi phân tích bài nộp. Vui lòng thử lại.', subId)
     return null
   } finally {
@@ -316,11 +325,11 @@ export async function processSubmissionGrading(subId) {
 
 export async function recoverPendingSubmissions() {
   const db = getDb()
-  const pendings = db.prepare(`SELECT id FROM submissions WHERE status = 'pending'`).all()
+  const pendings = db.prepare(`SELECT id FROM submissions WHERE status = 'pending' OR grading_status IN ('queued', 'processing')`).all()
 
   if (!pendings.length) return
 
-  console.log(`⏳ [Recovery] Found ${pendings.length} pending submission(s). Processing...`)
+  console.log(`⏳ [DB Queue Recovery] Found ${pendings.length} pending submission(s). Processing...`)
   for (const sub of pendings) {
     await processSubmissionGrading(sub.id)
   }

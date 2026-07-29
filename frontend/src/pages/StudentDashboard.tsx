@@ -299,7 +299,7 @@ export default function StudentDashboard() {
                 const sub = mySubs[a.id]
                 const sb = sub ? (STATUS_BADGE[sub.status] || STATUS_BADGE.pending) : null
                 const isOpen = a.status === 'open'
-                const scoreDisplay = sub ? `${sub.score_total}/100` : null
+                const scoreDisplay = sub ? (sub.score_total !== null ? `${sub.score_total}/100` : 'Chưa chấm T1') : null
 
                 return (
                   <div key={a.id} className="card card-sm" style={{
@@ -337,7 +337,7 @@ export default function StudentDashboard() {
                           <div style={{
                             width: '54px', height: '54px',
                             borderRadius: '50%',
-                            background: `conic-gradient(${scoreColor(sub.score_total)} ${((sub.score_total) / 100) * 360}deg, var(--bg4) 0deg)`,
+                            background: sub.score_total !== null ? `conic-gradient(${scoreColor(sub.score_total)} ${((sub.score_total) / 100) * 360}deg, var(--bg4) 0deg)` : 'var(--bg4)',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             alignSelf: 'center',
                           }}>
@@ -346,8 +346,8 @@ export default function StudentDashboard() {
                               background: 'var(--bg2)',
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
                             }}>
-                              <span style={{ fontSize: '1rem', fontWeight: 900, fontFamily: 'var(--display)', color: scoreColor(sub.score_total), lineHeight: 1 }}>
-                                {sub.score_total}
+                              <span style={{ fontSize: sub.score_total !== null ? '1rem' : '.75rem', fontWeight: 900, fontFamily: 'var(--display)', color: scoreColor(sub.score_total), lineHeight: 1 }}>
+                                {sub.score_total !== null ? sub.score_total : '—'}
                               </span>
                             </div>
                           </div>
@@ -552,14 +552,14 @@ export default function StudentDashboard() {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
                     <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontFamily: 'var(--display)', fontSize: '3.5rem', fontWeight: 900, lineHeight: 1, color: subResult.status === 'passed' ? '#34d399' : subResult.status === 'failed' ? '#f87171' : '#fbbf24' }}>
-                        {subResult.score_total || 0}
+                      <div style={{ fontFamily: 'var(--display)', fontSize: subResult.score_total !== null ? '3.5rem' : '2.8rem', fontWeight: 900, lineHeight: 1, color: scoreColor(subResult.score_total) }}>
+                        {subResult.score_total !== null ? subResult.score_total : '—'}
                       </div>
-                      <div style={{ fontSize: '.75rem', color: 'var(--t3)', marginTop: '2px' }}>/100 điểm</div>
+                      <div style={{ fontSize: '.75rem', color: 'var(--t3)', marginTop: '2px' }}>{subResult.score_total !== null ? '/100 điểm' : 'Chưa chấm điểm chính thức'}</div>
                     </div>
                     <div style={{ textAlign: 'center' }}>
-                      <span className={`badge ${subResult.status === 'passed' ? 'bdg' : subResult.status === 'failed' ? 'bdr' : 'bdy'}`} style={{ fontSize: '.88rem', padding: '8px 18px' }}>
-                        {subResult.status === 'passed' ? '✅ PASSED' : subResult.status === 'failed' ? '❌ FAILED' : '⚠️ WARNING'}
+                      <span className={`badge ${subResult.status === 'passed' ? 'bdg' : subResult.status === 'failed' ? 'bdr' : subResult.status === 'ungraded' ? 'bdb' : 'bdy'}`} style={{ fontSize: '.88rem', padding: '8px 18px' }}>
+                        {subResult.status === 'passed' ? '✅ PASSED' : subResult.status === 'failed' ? '❌ FAILED' : subResult.status === 'ungraded' ? 'ℹ️ UNGRADED' : '⚠️ WARNING'}
                       </span>
                       {subResult.ai_suspicion_flag ? (
                         <div className="badge bdy" style={{ marginTop: '6px', fontSize: '.7rem' }}>🤖 AI Detected</div>
@@ -589,7 +589,7 @@ export default function StudentDashboard() {
                         </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'flex-end', gap: '5px', marginBottom: '10px' }}>
-                        <div style={{ fontFamily: 'var(--display)', fontSize: '2.4rem', fontWeight: 900, color: t.c, lineHeight: 1 }}>{t.v || 0}</div>
+                        <div style={{ fontFamily: 'var(--display)', fontSize: '2.4rem', fontWeight: 900, color: t.c, lineHeight: 1 }}>{t.v !== null && t.v !== undefined ? t.v : '—'}</div>
                         <div style={{ fontSize: '.85rem', color: 'var(--t3)', marginBottom: '6px' }}>/{t.m}</div>
                       </div>
                       <div style={{ background: 'rgba(0,0,0,.2)', borderRadius: '6px', height: '8px', overflow: 'hidden' }}>

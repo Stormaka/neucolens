@@ -103,11 +103,12 @@ function initSchema() {
       student_id INTEGER NOT NULL REFERENCES users(id),
       code TEXT NOT NULL,
       attempt_number INTEGER DEFAULT 1,
-      score_total INTEGER DEFAULT 0,
-      score_t1 INTEGER DEFAULT 0,
-      score_t2 INTEGER DEFAULT 0,
-      score_t3 INTEGER DEFAULT 0,
-      status TEXT DEFAULT 'pending' CHECK(status IN ('pending','passed','failed','warning')),
+      score_total INTEGER,
+      score_t1 INTEGER,
+      score_t2 INTEGER,
+      score_t3 INTEGER,
+      status TEXT DEFAULT 'pending' CHECK(status IN ('pending','passed','failed','warning','ungraded')),
+      grading_status TEXT DEFAULT 'completed' CHECK(grading_status IN ('queued','processing','completed','failed')),
       llm_feedback TEXT,
       ai_suspicion_flag INTEGER DEFAULT 0,
       ai_suspicion_confidence REAL DEFAULT 0,
@@ -188,6 +189,46 @@ function runMigrations() {
   addCol('assignments', 'test_cases_json', 'TEXT DEFAULT "[]"')
   addCol('student_profiles', 'mastery_json', 'TEXT DEFAULT "{}"')
   addCol('feedback_ratings', 'helpfulness_category', "TEXT DEFAULT 'helpful'")
+  addCol('submissions', 'grading_status', "TEXT DEFAULT 'completed'")
+
+  // Migration for submissions status CHECK constraint to allow 'ungraded'
+  try {
+    const tableSql = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='submissions'").get()?.sql || ''
+    if (tableSql && !tableSql.includes('ungraded')) {
+      db.exec(`
+        PRAGMA foreign_keys=OFF;
+        BEGIN TRANSACTION;
+        CREATE TABLE submissions_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          assignment_id INTEGER NOT NULL REFERENCES assignments(id),
+          student_id INTEGER NOT NULL REFERENCES users(id),
+          code TEXT NOT NULL,
+          attempt_number INTEGER DEFAULT 1,
+          score_total INTEGER,
+          score_t1 INTEGER,
+          score_t2 INTEGER,
+          score_t3 INTEGER,
+          status TEXT DEFAULT 'pending' CHECK(status IN ('pending','passed','failed','warning','ungraded')),
+          grading_status TEXT DEFAULT 'completed' CHECK(grading_status IN ('queued','processing','completed','failed')),
+          llm_feedback TEXT,
+          ai_suspicion_flag INTEGER DEFAULT 0,
+          ai_suspicion_confidence REAL DEFAULT 0,
+          ai_suspicion_reason TEXT,
+          misconceptions_json TEXT DEFAULT '[]',
+          submitted_at TEXT DEFAULT (datetime('now'))
+        );
+        INSERT INTO submissions_new SELECT id, assignment_id, student_id, code, attempt_number, score_total, score_t1, score_t2, score_t3, status, 'completed', llm_feedback, ai_suspicion_flag, ai_suspicion_confidence, ai_suspicion_reason, misconceptions_json, submitted_at FROM submissions;
+        DROP TABLE submissions;
+        ALTER TABLE submissions_new RENAME TO submissions;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_submissions_attempt ON submissions(assignment_id, student_id, attempt_number);
+        COMMIT;
+        PRAGMA foreign_keys=ON;
+      `)
+      console.log('✅ Migrated submissions table CHECK constraint to include ungraded')
+    }
+  } catch (e) {
+    console.error('⚠️ Submissions schema migration warning:', e.message)
+  }
 
   // Migration for feedback_ratings unique constraint on legacy databases: deduplicate first
   try {

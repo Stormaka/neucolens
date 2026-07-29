@@ -740,9 +740,10 @@ function buildFeedback({ code, status, total, t1, t2, t3, maxT1, maxT2, maxT3,
   const { passCount = 0, totalCount = 0, errors: tcErrors = [] } = testResult
 
   // ── Storm v4: Test Case Results ────────────────────────────────
-  // 4.5: Hien thi runner status ro rang
-  if (runnerStatus === 'RUNNER_DISABLED' && totalCount === 0) {
-    parts.push('⚠️ Runner bi tat tren production. T1 tinh theo concept coverage (co giam).Giao vien: bat ENABLE_LOCAL_RUNNER=true.')
+  if (runnerStatus === 'RUNNER_DISABLED') {
+    parts.push('⚠️ Runner chưa khả dụng nên T1 chưa được đánh giá. Hệ thống chưa cấp tổng điểm và trạng thái đạt/không đạt chính thức cho bài này (Trạng thái: Ungraded).')
+  } else if (runnerStatus === 'NO_TEST_CASES') {
+    parts.push('⚠️ Bài tập chưa cấu hình test case tự động nên T1 chưa được đánh giá (Trạng thái: Ungraded).')
   } else if (runnerStatus === 'COMPILE_FAILED') {
     parts.push('❌ COMPILE ERROR: Code không biên dịch được. T1 = 0 (điểm chạy test). Kiểm tra cú pháp C++.')
   } else if (runnerStatus === 'RUNNER_TIMEOUT') {

@@ -43,7 +43,7 @@ int main() {
     code: `#include <iostream>
 using namespace std;
 int main() { for(;;){} return 0; }`,
-    expected_status: 'failed',
+    expected_status: 'ungraded',
     expected_score_max: 30,
     expected_concepts: { 'Loops': false }
   },
@@ -53,7 +53,7 @@ int main() { for(;;){} return 0; }`,
     code: `#include <iostream>
 using namespace std;
 int main() { cout << "Hello"; return 0; }`,
-    expected_status: 'warning',
+    expected_status: 'ungraded',
     expected_score_min: 20,
     expected_score_max: 65,
     expected_concepts: { 'I/O': false }  // only cout, not both
@@ -86,7 +86,7 @@ void sapXep(int arr[], int n) {
             if (arr[j] > arr[j+1]) { int t=arr[j]; arr[j]=arr[j+1]; arr[j+1]=t; }
 }
 int main() { int a[]={5,3,1,4,2}; sapXep(a,5); return 0; }`,
-    expected_status: 'failed',
+    expected_status: 'ungraded',
     expected_score_max: 40,
     expected_concepts: { 'Recursion': false }
   },
@@ -120,7 +120,7 @@ int main() {
     for (int j = 0; j < 5; j++) cout << j;
     return 0;
 }`,
-    expected_status: 'failed',
+    expected_status: 'ungraded',
     expected_score_max: 40,
     expected_concepts: { 'Nested Loops': false }
   },
@@ -128,7 +128,7 @@ int main() {
     label: 'nested_loop_inline',
     concepts: ['Nested Loops'],
     code: `int main(){for(int i=0;i<5;i++){for(int j=0;j<5;j++){int x=i*j;}}}`,
-    expected_status: 'warning',
+    expected_status: 'ungraded',
     expected_score_min: 30,
     expected_concepts: { 'Nested Loops': true }
   },
@@ -140,7 +140,7 @@ int main() {
     code: `#include <iostream>
 using namespace std;
 void a(){} void b(){} int main(){ return 0; }`,
-    expected_status: 'failed',
+    expected_status: 'ungraded',
     expected_score_max: 30,
     expected_concepts: { 'Functions': false }
   },
@@ -169,7 +169,7 @@ int main() {
     code: `#include <iostream>
 using namespace std;
 int main() { int x; cin>>x; if(x){} else{} return 0; }`,
-    expected_status: 'failed',
+    expected_status: 'ungraded',
     expected_score_max: 35,
     expected_concepts: { 'Conditionals': false }
   },
@@ -364,7 +364,7 @@ int main() {
     code: `#include <iostream>
 using namespace std;
 int main() { return 0; }`,
-    expected_status: 'failed',
+    expected_status: 'ungraded',
     expected_score_max: 30,
     expected_concepts: { 'Variables': false, 'I/O': false }
   },
@@ -378,7 +378,7 @@ int main() {
     cout << "Hello World";
     return 0;
 }`,
-    expected_status: 'warning',
+    expected_status: 'ungraded',
     expected_score_min: 10,
     expected_score_max: 55,
     expected_concepts: { 'Loops': false, 'I/O': false }
@@ -422,14 +422,20 @@ function scoreToCategory(score) {
   return 'failed'
 }
 
-function cohensKappa(predicted, actual, labels = ['passed', 'warning', 'failed']) {
+function cohensKappa(predicted, actual, labels = ['passed', 'warning', 'failed', 'ungraded']) {
   const n = predicted.length
   if (n === 0) return 0
   
   // Build confusion matrix
   const conf = {}
   labels.forEach(a => { conf[a] = {}; labels.forEach(b => { conf[a][b] = 0 }) })
-  for (let i = 0; i < n; i++) conf[actual[i]][predicted[i]]++
+  for (let i = 0; i < n; i++) {
+    const act = actual[i]
+    const pred = predicted[i]
+    if (conf[act] && conf[act][pred] !== undefined) {
+      conf[act][pred]++
+    }
+  }
   
   // Po = observed agreement
   const po = labels.reduce((s, l) => s + (conf[l][l] || 0), 0) / n
@@ -482,13 +488,16 @@ async function runBenchmark() {
     const actual_mid = ((sample.expected_score_min ?? 0) + (sample.expected_score_max ?? 100)) / 2
     predictedScores.push(predicted)
     actualScoresMid.push(actual_mid)
-    predictedCats.push(result.status === 'ungraded' ? 'failed' : scoreToCategory(predicted))
+    predictedCats.push(result.status)
     actualCats.push(sample.expected_status)
     
-    // Score range check
-    const inRange = (result.status === sample.expected_status) ||
-      ((sample.expected_score_min === undefined || predicted >= sample.expected_score_min)
-      && (sample.expected_score_max === undefined || predicted <= sample.expected_score_max))
+    // Score & status range check (Strict AND evaluation)
+    const isUngraded = result.status === 'ungraded'
+    const statusMatch = result.status === sample.expected_status
+    const scoreMatch = (sample.expected_score_min === undefined || predicted >= sample.expected_score_min)
+                    && (sample.expected_score_max === undefined || predicted <= sample.expected_score_max)
+
+    const inRange = isUngraded ? statusMatch : (statusMatch && scoreMatch)
     
     // Concept accuracy
     const conceptScores = result.concept_scores || {}

@@ -81,7 +81,7 @@ export function ConceptTagInput({ value, onChange, lang = 'C++', placeholder = '
 
 
 // ── Color helpers ──────────────────────────────────────────────────────────
-export const scoreColor = (v: number) => v >= 85 ? '#34d399' : v >= 70 ? '#60a5fa' : v >= 50 ? '#fbbf24' : '#f87171'
+export const scoreColor = (v: number | null | undefined) => (v === null || v === undefined) ? 'var(--t3)' : v >= 85 ? '#34d399' : v >= 70 ? '#60a5fa' : v >= 50 ? '#fbbf24' : '#f87171'
 export const hmBg = (v: number) => v >= 85 ? 'rgba(22,163,74,.3)' : v >= 70 ? 'rgba(37,99,235,.28)' : v >= 50 ? 'rgba(202,138,4,.28)' : v >= 30 ? 'rgba(220,38,38,.22)' : 'rgba(127,29,29,.38)'
 export const hmColor = (v: number) => v >= 85 ? '#16a34a' : v >= 70 ? '#2563eb' : v >= 50 ? '#ca8a04' : v >= 30 ? '#dc2626' : '#7f1d1d'
 
@@ -96,6 +96,7 @@ export const STATUS_BADGE: Record<string, { c: string; i: string; l: string }> =
   failed: { c: 'bdr', i: '❌', l: 'Failed' },
   warning: { c: 'bdy', i: '⚠️', l: 'Warning' },
   pending: { c: 'bdn', i: '⏳', l: 'Chưa nộp' },
+  ungraded: { c: 'bdb', i: 'ℹ️', l: 'Chưa chấm T1' },
 }
 
 export const CONCEPTS = ['variables', 'conditionals', 'loops', 'arrays', 'functions']

@@ -441,7 +441,7 @@ export default function TeacherDashboard() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '9px' }}>
                             <div style={{ fontWeight: 700, fontSize: '.84rem' }}>{sub.student_name || sv?.name || `SV #${sub.student_id}`}</div>
                             <span className={`badge ${pb.c}`} style={{ fontSize: '.63rem' }}>{pb.i} {pb.l}</span>
-                            <span style={{ fontSize: '.73rem', color: 'var(--t3)', marginLeft: 'auto' }}>🏆 {sub.score_total || 0}/100</span>
+                            <span style={{ fontSize: '.73rem', color: 'var(--t3)', marginLeft: 'auto' }}>🏆 {sub.score_total !== null && sub.score_total !== undefined ? `${sub.score_total}/100` : 'Chưa chấm T1'}</span>
                             <span style={{ fontSize: '.68rem', color: 'var(--t4)' }}>Lần {sub.attempt_number}</span>
                           </div>
                           <CodeGraph
@@ -644,7 +644,7 @@ export default function TeacherDashboard() {
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span className={`badge ${sb.c}`} style={{ fontSize: '.58rem' }}>{sb.i} {sb.l}</span>
-                            <span style={{ fontFamily: 'var(--display)', fontSize: '.92rem', fontWeight: 800, color: scoreColor(sess.score_total || 0) }}>{sess.score_total || '—'}</span>
+                            <span style={{ fontFamily: 'var(--display)', fontSize: '.92rem', fontWeight: 800, color: scoreColor(sess.score_total) }}>{sess.score_total !== null && sess.score_total !== undefined ? sess.score_total : '—'}</span>
                           </div>
                           <div style={{ fontSize: '.65rem', color: 'var(--t4)', marginTop: '5px' }}>{sess.attempt_number || 0} lần nộp</div>
                         </div>
@@ -662,7 +662,7 @@ export default function TeacherDashboard() {
                         <div style={{ fontSize: '.72rem', color: 'var(--t2)', marginTop: '3px' }}>{selSession.attempt_number} lần nộp · {fmtDate(selSession.submitted_at)}</div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ fontFamily: 'var(--display)', fontSize: '1.6rem', fontWeight: 900, color: scoreColor(selSession.score_total || 0) }}>{selSession.score_total || '—'}</div>
+                        <div style={{ fontFamily: 'var(--display)', fontSize: '1.6rem', fontWeight: 900, color: scoreColor(selSession.score_total) }}>{selSession.score_total !== null && selSession.score_total !== undefined ? selSession.score_total : '—'}</div>
                         <button className="btn btn-ghost btn-sm" onClick={() => setShowStudentGraph(v => !v)}>
                           {showStudentGraph ? '📄 Ẩn Graph' : '🔬 Xem Graph'}
                         </button>
