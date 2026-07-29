@@ -171,7 +171,7 @@ export default function StudentDashboard() {
       const room = rooms[0]; setClassroom(room); setClassId(room.id)
       const [asgnList, prof] = await Promise.all([assignments.byClassroom(room.id), profiles.me(room.id)])
       setAsgns(asgnList); setMyProfile(prof)
-      if (asgnList.length > 0) setSelAsgn(asgnList.find((a: any) => a.status === 'open') || asgnList[asgnList.length - 1])
+      if (asgnList.length > 0) setSelAsgn(asgnList.find((a: any) => a.status === 'open') || asgnList[0])
 
       if (asgnList.length > 0) {
         const ids = asgnList.map((a: any) => a.id)
@@ -182,18 +182,48 @@ export default function StudentDashboard() {
     finally { setLoading(false) }
   }
 
+  async function refreshAssignments() {
+    if (!classId) return
+    try {
+      const freshList: any[] = await assignments.byClassroom(classId)
+      setAsgns(freshList)
+      if (selAsgn) {
+        const found = freshList.find((a: any) => a.id === selAsgn.id)
+        if (found) setSelAsgn(found)
+      }
+    } catch {}
+  }
+
   async function submit() {
     if (!selAsgn || !code.trim()) { toast('Vui lòng chọn bài tập và nhập code', true); return }
-    if (selAsgn.status === 'closed') { toast('Bài tập đã đóng', true); return }
+    
+    // Always fetch fresh status from server before validating
+    let targetAsgn = selAsgn
+    if (classId) {
+      try {
+        const freshList: any[] = await assignments.byClassroom(classId)
+        setAsgns(freshList)
+        const found = freshList.find((a: any) => a.id === selAsgn.id)
+        if (found) {
+          targetAsgn = found
+          setSelAsgn(found)
+        }
+      } catch {}
+    }
+
+    if (targetAsgn.status === 'closed') {
+      toast('Bài tập đã đóng — Giảng viên chưa cho phép nộp bài này', true)
+      return
+    }
     setSubmitting(true); setSubResult(null)
     setPipeState(PIPE_STEPS.map(() => 'idle'))
     try {
-      const res = await submissions.submit(selAsgn.id, code)
+      const res = await submissions.submit(targetAsgn.id, code)
       setPipeState(PIPE_STEPS.map(() => 'done'))
       setSubResult(res)
       toast('Phân tích hoàn tất!')
-      const subs = await submissions.me(selAsgn.id)
-      setMySubs(prev => ({ ...prev, [selAsgn.id]: subs?.[0] }))
+      const subs = await submissions.me(targetAsgn.id)
+      setMySubs(prev => ({ ...prev, [targetAsgn.id]: subs?.[0] }))
       const prof = await profiles.me(classId || undefined)
       setMyProfile(prof)
     } catch (e: any) { toast(e.message || 'Lỗi nộp bài', true) }
@@ -353,11 +383,26 @@ export default function StudentDashboard() {
                           </div>
                         )}
 
+                        {/* Nộp / Nộp lại (Primary button at top above Xem đề) */}
+                        <button
+                          className={`btn ${isOpen ? 'btn-primary' : 'btn-ghost'} btn-sm`}
+                          style={{ whiteSpace: 'nowrap', justifyContent: 'center', fontSize: '.78rem', fontWeight: 700, opacity: isOpen ? 1 : 0.6 }}
+                          onClick={() => {
+                            setSelAsgn(a);
+                            setSubResult(null);
+                            setPipeState(PIPE_STEPS.map(() => 'idle'));
+                            setActiveTab('submit');
+                            refreshAssignments();
+                          }}
+                        >
+                          {sub ? '🔄 Nộp lại' : '🚀 Nộp bài'}
+                        </button>
+
                         {/* Xem đề */}
                         <button
                           className="btn btn-ghost btn-sm"
                           style={{ whiteSpace: 'nowrap', justifyContent: 'center', fontSize: '.76rem' }}
-                          onClick={() => setModalAsgn(a)}
+                          onClick={() => { setModalAsgn(a); refreshAssignments(); }}
                         >
                           📄 Xem đề
                         </button>
@@ -370,17 +415,6 @@ export default function StudentDashboard() {
                         >
                           💬 Hỏi AI
                         </button>
-
-                        {/* Nộp / Nộp lại (only if open) */}
-                        {isOpen && (
-                          <button
-                            className="btn btn-primary btn-sm"
-                            style={{ whiteSpace: 'nowrap', justifyContent: 'center', fontSize: '.78rem', fontWeight: 700 }}
-                            onClick={() => { setSelAsgn(a); setSubResult(null); setPipeState(PIPE_STEPS.map(() => 'idle')); setActiveTab('submit') }}
-                          >
-                            {sub ? '🔄 Nộp lại' : '🚀 Nộp bài'}
-                          </button>
-                        )}
 
                         {/* Xem kết quả (if has submission) */}
                         {sub && (
@@ -444,7 +478,7 @@ export default function StudentDashboard() {
                 <div style={{ fontWeight: 700, fontSize: '.88rem', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   📋 Chọn Bài tập
                 </div>
-                {asgns.filter(a => a.status === 'open').map(a => (
+                {asgns.map(a => (
                   <div key={a.id} onClick={() => setSelAsgn(a)} style={{
                     padding: '11px 14px',
                     borderRadius: 'var(--r10)',
@@ -453,8 +487,13 @@ export default function StudentDashboard() {
                     cursor: 'pointer', marginBottom: '7px',
                     transition: 'all var(--t-fast) var(--ease)',
                   }}>
-                    <div style={{ fontWeight: 600, fontSize: '.85rem' }}>{a.title}</div>
-                    <div style={{ fontSize: '.7rem', color: 'var(--t3)', marginTop: '3px' }}>📅 DL: {fmtDate(a.deadline)}</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <div style={{ fontWeight: 600, fontSize: '.85rem' }}>{a.title}</div>
+                      <span className={`badge ${a.status === 'open' ? 'bdr' : 'bdn'}`} style={{ fontSize: '.6rem' }}>
+                        {a.status === 'open' ? '🟢 Mở' : '⚫ Đóng'}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '.7rem', color: 'var(--t3)' }}>📅 DL: {fmtDate(a.deadline)}</div>
                   </div>
                 ))}
                 {selAsgn && (
