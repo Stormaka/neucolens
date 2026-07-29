@@ -84,21 +84,23 @@ export const cppAdapter = {
       }
 
       case 'Conditionals': {
-        // if/else with actual non-trivial condition and non-empty body
-        const ifBlocks = [...cleaned.matchAll(/\bif\s*\(([^)]+)\)\s*\{([^}]*)\}/g)]
-        const activeIfs = ifBlocks.filter(m => {
-          const cond = m[1].trim()
-          const body = m[2].trim()
-          if (['true', '1', '0', 'false'].includes(cond)) return false
-          return body.length > 0 && body !== ';'
-        })
+        // Chặn if/else rỗng hoàn toàn dạng stub: if(x){} hoặc if(x){} else{}
+        const isStub = /\bif\s*\([^)]+\)\s*\{\s*\}\s*(?:else\s*\{\s*\})?/.test(cleaned)
+        if (isStub) return 0
+
         const hasElseIf = /\belse\s+if\s*\(/.test(cleaned)
-        const hasElse = /\belse\b/.test(cleaned)
-        if (hasElseIf && activeIfs.length > 0) return 100
-        if (hasElse && activeIfs.length > 0) return 85
-        if (activeIfs.length > 0) return 50
-        return 0
+        const hasElse = /\belse\b\s*(?!if)/.test(cleaned)
+
+        const ifMatches = [...cleaned.matchAll(/\bif\s*\(([^)]+)\)/g)]
+        const validIfs = ifMatches.filter(m => !['true', 'false', '1', '0'].includes(m[1].trim()))
+
+        if (!validIfs.length) return 0
+        if (hasElseIf && validIfs.length >= 2) return 100
+        if (hasElse && validIfs.length >= 1) return 85
+        if (validIfs.length >= 2) return 70
+        return 50
       }
+
 
       case 'I/O': {
         const hasCin = /\bcin\s*>>\s*[a-zA-Z_]\w*/.test(cleaned)
@@ -168,9 +170,15 @@ export const cppAdapter = {
       }
 
       case 'Base Case': {
-        // Recursion base case: if(n <= 1) return ...
-        const hasBaseCase = /if\s*\([^)]*[<=>!]+(0|1|null|nullptr|"")\s*\)/.test(cleaned) && /\breturn\b/.test(cleaned)
-        return hasBaseCase ? 100 : 0
+        // Recursion base case: if(n <= 0), if(n == 1), if(n < 1) return ...
+        // More flexible: look for if with comparison to small value + return
+        const hasBaseCase = (
+          /\bif\s*\([^)]*(?:<=|<|==|>=|>)\s*[01]\s*\)/.test(cleaned) ||
+          /\bif\s*\([^)]*(?:null|nullptr|"")\s*\)/.test(cleaned)
+        ) && /\breturn\b/.test(cleaned)
+        // Also check n==1 written as n==1 (without spaces)
+        const hasBaseCase2 = /\bif\s*\(\s*\w+\s*(?:==|<=|<)\s*[01]\s*\)/.test(cleaned) && /\breturn\b/.test(cleaned)
+        return (hasBaseCase || hasBaseCase2) ? 100 : 0
       }
 
       case 'Pattern Printing': {

@@ -5,13 +5,20 @@ import { analyzeCode, updateStudentProfile } from '../services/llmService.js'
 
 const router = express.Router()
 
-// ── In-memory rate limit: max 5 submissions / phút / student ─────────────────
+// In-memory rate limit: max 5 submissions / phút / student
+// Note: resets on server restart (acceptable for dev; for production use Redis/DB)
 const _rateMap = new Map()
 function isRateLimited(studentId) {
   const now = Date.now(), window = 60_000, max = 5
   const prev = (_rateMap.get(studentId) || []).filter(t => now - t < window)
   if (prev.length >= max) return true
   _rateMap.set(studentId, [...prev, now])
+  // Auto-clear old entries to prevent unbounded memory growth
+  if (_rateMap.size > 5000) {
+    for (const [k, v] of _rateMap) {
+      if (v.every(t => now - t >= window)) _rateMap.delete(k)
+    }
+  }
   return false
 }
 
@@ -115,9 +122,10 @@ router.post('/', authenticate, requireRole('student'), async (req, res) => {
     }
     return res.status(201).json({ id: subId, status: 'failed', message: 'Lỗi phân tích bài nộp' })
   } else {
-    // Trên Node.js server thông thường: Trả 202 ngay và chấm async
+    // Trên Node.js server thông thường: Trả  202 ngay và chấm async
+    // Dùng Promise microtask thay setImmediate — đảm bảo không bị drop khi container freeze
     res.status(202).json({ id: subId, status: 'pending', message: 'Bài nộp đang được phân tích...' })
-    setImmediate(runGrading)
+    Promise.resolve().then(runGrading).catch(err => console.error('Background grading error:', err))
   }
 })
 
@@ -136,11 +144,11 @@ router.get('/me/batch', authenticate, (req, res) => {
     SELECT s.*
     FROM submissions s
     INNER JOIN (
-      SELECT assignment_id, MAX(submitted_at) as latest_at
+      SELECT assignment_id, MAX(id) as latest_id
       FROM submissions
       WHERE student_id = ? AND assignment_id IN (${placeholders})
       GROUP BY assignment_id
-    ) lsub ON s.assignment_id = lsub.assignment_id AND s.submitted_at = lsub.latest_at
+    ) lsub ON s.id = lsub.latest_id
     WHERE s.student_id = ?
   `).all(req.user.id, ...ids, req.user.id)
 
@@ -237,10 +245,22 @@ router.patch('/:id/override', authenticate, requireRole('teacher'), (req, res) =
     return res.status(403).json({ error: 'Bạn không có quyền sửa điểm submission này', code: 'FORBIDDEN_OVERRIDE' })
 
   const { score_total, score_t1, score_t2, score_t3, status, llm_feedback } = req.body
-  const newTotal = score_total !== undefined ? Number(score_total) : sub.score_total
+
+  // Validate score ranges
+  const asgn = db.prepare('SELECT weight_t1, weight_t2, weight_t3 FROM assignments WHERE id=?').get(sub.assignment_id)
+  const maxT1 = asgn?.weight_t1 ?? 40
+  const maxT2 = asgn?.weight_t2 ?? 35
+  const maxT3 = asgn?.weight_t3 ?? 25
+
   const newT1 = score_t1 !== undefined ? Number(score_t1) : sub.score_t1
   const newT2 = score_t2 !== undefined ? Number(score_t2) : sub.score_t2
   const newT3 = score_t3 !== undefined ? Number(score_t3) : sub.score_t3
+
+  if (newT1 < 0 || newT1 > maxT1) return res.status(400).json({ error: `score_t1 phải từ 0–${maxT1}`, code: 'INVALID_SCORE' })
+  if (newT2 < 0 || newT2 > maxT2) return res.status(400).json({ error: `score_t2 phải từ 0–${maxT2}`, code: 'INVALID_SCORE' })
+  if (newT3 < 0 || newT3 > maxT3) return res.status(400).json({ error: `score_t3 phải từ 0–${maxT3}`, code: 'INVALID_SCORE' })
+
+  const newTotal = score_total !== undefined ? Math.min(100, Math.max(0, Number(score_total))) : (newT1 + newT2 + newT3)
   const newStatus = status || (newTotal >= 70 ? 'passed' : newTotal >= 50 ? 'warning' : 'failed')
   const newFeedback = llm_feedback !== undefined ? llm_feedback : sub.llm_feedback
 

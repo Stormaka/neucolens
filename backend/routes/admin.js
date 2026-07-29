@@ -50,7 +50,8 @@ router.post('/users', (req, res) => {
     ).run(email, hash, name, role, mssv || null)
     res.status(201).json({ id: result.lastInsertRowid, email, name, role, mssv: mssv || null })
   } catch (e) {
-    res.status(500).json({ error: 'Lỗi tạo tài khoản: ' + (e.message || '') })
+    console.error('Create user error:', e.message)
+    res.status(500).json({ error: 'Lỗi tạo tài khoản. Vui lòng thử lại.', code: 'CREATE_USER_FAILED' })
   }
 })
 

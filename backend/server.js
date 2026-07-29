@@ -10,6 +10,7 @@ import profilesRouter from './routes/profiles.js'
 import chatsRouter from './routes/chats.js'
 import misconceptionsRouter from './routes/misconceptions.js'
 import adminRouter from './routes/admin.js'
+import { authenticate, requireRole } from './routes/auth.js'
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -72,8 +73,8 @@ app.get('/api/health', (_, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() })
 })
 
-// ── Storm v4: System capabilities check ────────────────────────────────────
-app.get('/api/system/check', (_, res) => {
+// ── Storm v4: System capabilities check (Teacher-only — avoid information disclosure) ──────────
+app.get('/api/system/check', authenticate, requireRole('teacher'), (_, res) => {
   const checks = {}
 
   // Check g++ — thử nhiều path

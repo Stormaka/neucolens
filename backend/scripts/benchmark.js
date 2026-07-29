@@ -1,88 +1,532 @@
 /**
- * Ground Truth Benchmark Suite — NEU-CodeLens
- * Script đo đạc & kiểm định chất lượng chấm điểm tự động so với điểm chuyên gia (Ground Truth)
- * Tính toán các chỉ số thống kê:
- * - MAE (Mean Absolute Error)
- * - RMSE (Root Mean Squared Error)
- * - Pearson Correlation (r)
- * - Cohen's Kappa (κ) cho phân loại mức độ năng lực
+ * Benchmark Script — NEU CodeLens Scoring System
+ * Đánh giá chất lượng chấm điểm so với ground truth
+ * Run: node backend/scripts/benchmark.js
+ *
+ * Chỉ số đánh giá:
+ * - RMSE (Root Mean Squared Error): sai lệch tổng điểm
+ * - MAE  (Mean Absolute Error): sai lệch tuyệt đối trung bình
+ * - Cohen's Kappa: độ đồng thuận phân loại pass/warning/fail
+ * - Per-concept accuracy: % concept được phát hiện đúng
  */
 
-import { getDb } from '../db/database.js'
 import { analyzeCode } from '../services/llmService.js'
 
-// Benchmark sample dataset với điểm Chuyên Gia (Ground Truth expert scores)
-const BENCHMARK_SAMPLES = [
+// ─────────────────────────────────────────────────────────────────────────────
+// Ground Truth Dataset (25 mẫu, 5 loại bài)
+// ─────────────────────────────────────────────────────────────────────────────
+const GROUND_TRUTH = [
+  // === NHÓM 1: Vòng lặp & I/O ===
   {
-    name: 'Sample 1: Correct C++ Recursion',
-    code: `#include <iostream>\nusing namespace std;\nlong long giaiThua(int n) {\n    if (n <= 1) return 1;\n    return n * giaiThua(n - 1);\n}\nint main() {\n    int n; cin >> n;\n    cout << giaiThua(n);\n    return 0;\n}`,
-    assignment: { title: 'Đệ quy tính giai thừa', concepts: ['Functions', 'Recursion', 'Base Case'], test_cases_json: '[{"input":"5","expected":"120"},{"input":"0","expected":"1"}]', weight_t1: 40, weight_t2: 35, weight_t3: 25 },
-    expertScore: 95
+    label: 'loop_io_perfect',
+    concepts: ['Loops', 'I/O', 'Variables'],
+    code: `#include <iostream>
+using namespace std;
+int main() {
+    int n;
+    cin >> n;
+    for (int i = 1; i <= n; i++) {
+        cout << i << endl;
+    }
+    return 0;
+}`,
+    expected_status: 'passed',
+    expected_score_min: 70,
+    expected_concepts: { 'Loops': true, 'I/O': true, 'Variables': true }
   },
   {
-    name: 'Sample 2: Sequential Loops (Fake Nested Loop Attempt)',
-    code: `#include <iostream>\nusing namespace std;\nint main() {\n    int n; cin >> n;\n    for(int i=0; i<n; i++) cout << i;\n    for(int j=0; j<n; j++) cout << j;\n    return 0;\n}`,
-    assignment: { title: 'In tam giác sao', concepts: ['Loops', 'Nested Loops', 'Pattern Printing'], test_cases_json: '[{"input":"3","expected":"* \\n* * \\n* * * "}]', weight_t1: 40, weight_t2: 35, weight_t3: 25 },
-    expertScore: 40
+    label: 'loop_empty_exploit',
+    concepts: ['Loops', 'I/O'],
+    code: `#include <iostream>
+using namespace std;
+int main() { for(;;){} return 0; }`,
+    expected_status: 'failed',
+    expected_score_max: 30,
+    expected_concepts: { 'Loops': false }
   },
   {
-    name: 'Sample 3: Code Trash / Invalid Syntax',
-    code: `asdf qwe rty 12345 67890 hello world`,
-    assignment: { title: 'Mảng 1 chiều', concepts: ['Arrays', 'Loops'], test_cases_json: '[]', weight_t1: 40, weight_t2: 35, weight_t3: 25 },
-    expertScore: 0
+    label: 'loop_io_no_cin',
+    concepts: ['I/O'],
+    code: `#include <iostream>
+using namespace std;
+int main() { cout << "Hello"; return 0; }`,
+    expected_status: 'warning',
+    expected_score_min: 20,
+    expected_score_max: 65,
+    expected_concepts: { 'I/O': false }  // only cout, not both
+  },
+
+  // === NHÓM 2: Đệ quy ===
+  {
+    label: 'recursion_factorial',
+    concepts: ['Recursion', 'Functions', 'Base Case'],
+    code: `#include <iostream>
+using namespace std;
+int factorial(int n) {
+    if (n <= 1) return 1;
+    return n * factorial(n - 1);
+}
+int main() { cout << factorial(5); return 0; }`,
+    expected_status: 'passed',
+    expected_score_min: 70,
+    expected_concepts: { 'Recursion': true, 'Functions': true, 'Base Case': true }
   },
   {
-    name: 'Sample 4: Bubble Sort Correct',
-    code: `#include <iostream>\nusing namespace std;\nvoid sapXep(int a[], int n) {\n    for (int i = 0; i < n-1; i++)\n        for (int j = i+1; j < n; j++)\n            if (a[i] > a[j]) { int t=a[i]; a[i]=a[j]; a[j]=t; }\n}\nint main() {\n    int n, a[100]; cin >> n;\n    for (int i = 0; i < n; i++) cin >> a[i];\n    sapXep(a, n);\n    for (int i = 0; i < n; i++) cout << a[i] << " ";\n    return 0;\n}`,
-    assignment: { title: 'Sắp xếp mảng', concepts: ['Functions', 'Arrays', 'Sorting Algorithm', 'Loops'], test_cases_json: '[{"input":"4\\n3 1 4 2","expected":"1 2 3 4 "}]', weight_t1: 40, weight_t2: 35, weight_t3: 25 },
-    expertScore: 92
+    label: 'recursion_false_positive',
+    concepts: ['Recursion'],
+    code: `#include <iostream>
+using namespace std;
+void sapXep(int arr[], int n) {
+    for (int i = 0; i < n-1; i++)
+        for (int j = 0; j < n-i-1; j++)
+            if (arr[j] > arr[j+1]) { int t=arr[j]; arr[j]=arr[j+1]; arr[j+1]=t; }
+}
+int main() { int a[]={5,3,1,4,2}; sapXep(a,5); return 0; }`,
+    expected_status: 'failed',
+    expected_score_max: 40,
+    expected_concepts: { 'Recursion': false }
+  },
+
+  // === NHÓM 3: Vòng lặp lồng nhau ===
+  {
+    label: 'nested_loop_real',
+    concepts: ['Nested Loops', 'Pattern Printing'],
+    code: `#include <iostream>
+using namespace std;
+int main() {
+    int n = 5;
+    for (int i = 1; i <= n; i++) {
+        for (int j = 1; j <= i; j++) cout << "*";
+        cout << endl;
+    }
+    return 0;
+}`,
+    expected_status: 'passed',
+    expected_score_min: 65,
+    expected_concepts: { 'Nested Loops': true, 'Pattern Printing': true }
+  },
+  {
+    label: 'nested_loop_sequential_exploit',
+    concepts: ['Nested Loops'],
+    code: `#include <iostream>
+using namespace std;
+int main() {
+    for (int i = 0; i < 5; i++) cout << i;
+    for (int j = 0; j < 5; j++) cout << j;
+    return 0;
+}`,
+    expected_status: 'failed',
+    expected_score_max: 40,
+    expected_concepts: { 'Nested Loops': false }
+  },
+  {
+    label: 'nested_loop_inline',
+    concepts: ['Nested Loops'],
+    code: `int main(){for(int i=0;i<5;i++){for(int j=0;j<5;j++){int x=i*j;}}}`,
+    expected_status: 'warning',
+    expected_score_min: 30,
+    expected_concepts: { 'Nested Loops': true }
+  },
+
+  // === NHÓM 4: Hàm ===
+  {
+    label: 'functions_stub_exploit',
+    concepts: ['Functions'],
+    code: `#include <iostream>
+using namespace std;
+void a(){} void b(){} int main(){ return 0; }`,
+    expected_status: 'failed',
+    expected_score_max: 30,
+    expected_concepts: { 'Functions': false }
+  },
+  {
+    label: 'functions_real',
+    concepts: ['Functions', 'Variables'],
+    code: `#include <iostream>
+using namespace std;
+int tinh_tong(int a, int b) { return a + b; }
+double tinh_trung_binh(int a, int b) { return (a + b) / 2.0; }
+int main() {
+    int x = 5, y = 3;
+    cout << tinh_tong(x, y) << " " << tinh_trung_binh(x, y);
+    return 0;
+}`,
+    expected_status: 'passed',
+    expected_score_min: 70,
+    expected_concepts: { 'Functions': true, 'Variables': true }
+  },
+
+  // === NHÓM 5: Conditionals ===
+  {
+    label: 'conditionals_empty_exploit',
+    concepts: ['Conditionals'],
+    code: `#include <iostream>
+using namespace std;
+int main() { int x; cin>>x; if(x){} else{} return 0; }`,
+    expected_status: 'failed',
+    expected_score_max: 35,
+    expected_concepts: { 'Conditionals': false }
+  },
+  {
+    label: 'conditionals_real_elseif',
+    concepts: ['Conditionals', 'I/O'],
+    code: `#include <iostream>
+using namespace std;
+int main() {
+    int diem; cin >> diem;
+    if (diem >= 90) cout << "Xuat sac";
+    else if (diem >= 70) cout << "Kha";
+    else if (diem >= 50) cout << "Trung binh";
+    else cout << "Yeu";
+    return 0;
+}`,
+    expected_status: 'passed',
+    expected_score_min: 65,
+    expected_concepts: { 'Conditionals': true, 'I/O': true }
+  },
+
+  // === NHÓM 6: Mảng & tìm kiếm ===
+  {
+    label: 'array_linear_search',
+    concepts: ['Arrays', 'Linear Search', 'Loops'],
+    code: `#include <iostream>
+using namespace std;
+int main() {
+    int arr[10], n, key;
+    cin >> n;
+    for (int i = 0; i < n; i++) cin >> arr[i];
+    cin >> key;
+    bool found = false;
+    for (int i = 0; i < n; i++) {
+        if (arr[i] == key) { cout << i; found = true; break; }
+    }
+    if (!found) cout << -1;
+    return 0;
+}`,
+    expected_status: 'passed',
+    expected_score_min: 70,
+    expected_concepts: { 'Arrays': true, 'Linear Search': true, 'Loops': true }
+  },
+
+  // === NHÓM 7: Sắp xếp ===
+  {
+    label: 'bubble_sort',
+    concepts: ['Sorting Algorithm', 'Arrays', 'Nested Loops'],
+    code: `#include <iostream>
+using namespace std;
+int main() {
+    int n; cin >> n;
+    int arr[100];
+    for (int i = 0; i < n; i++) cin >> arr[i];
+    for (int i = 0; i < n-1; i++)
+        for (int j = 0; j < n-i-1; j++)
+            if (arr[j] > arr[j+1]) { int t=arr[j]; arr[j]=arr[j+1]; arr[j+1]=t; }
+    for (int i = 0; i < n; i++) cout << arr[i] << " ";
+    return 0;
+}`,
+    expected_status: 'passed',
+    expected_score_min: 72,
+    expected_concepts: { 'Sorting Algorithm': true, 'Arrays': true, 'Nested Loops': true }
+  },
+
+  // === NHÓM 8: OOP ===
+  {
+    label: 'oop_basic_class',
+    concepts: ['OOP', 'Functions'],
+    code: `#include <iostream>
+using namespace std;
+class HinhChu Nhat {
+public:
+    double chieuDai, chieuRong;
+    double dienTich() { return chieuDai * chieuRong; }
+    double chuVi() { return 2 * (chieuDai + chieuRong); }
+};
+int main() {
+    HinhChuNhat h;
+    h.chieuDai = 5; h.chieuRong = 3;
+    cout << h.dienTich() << " " << h.chuVi();
+    return 0;
+}`,
+    expected_status: 'passed',
+    expected_score_min: 65,
+    expected_concepts: { 'OOP': true, 'Functions': true }
+  },
+
+  // === NHÓM 9: Code rác / garble ===
+  {
+    label: 'garbage_random_text',
+    concepts: ['Variables'],
+    code: 'lkajsdhflkasdjhflksdjfhklsjdhfksdjhfkljsdhf',
+    expected_status: 'failed',
+    expected_score_max: 0,
+    expected_concepts: {}
+  },
+  {
+    label: 'garbage_empty',
+    concepts: ['Loops'],
+    code: '',
+    expected_status: 'failed',
+    expected_score_max: 0,
+    expected_concepts: {}
+  },
+
+  // === NHÓM 10: Pointer & Memory ===
+  {
+    label: 'pointers_basic',
+    concepts: ['Pointers', 'Variables'],
+    code: `#include <iostream>
+using namespace std;
+int main() {
+    int x = 10;
+    int *ptr = &x;
+    cout << *ptr << " " << ptr;
+    *ptr = 20;
+    cout << x;
+    return 0;
+}`,
+    expected_status: 'passed',
+    expected_score_min: 65,
+    expected_concepts: { 'Pointers': true, 'Variables': true }
+  },
+  {
+    label: 'memory_new_delete',
+    concepts: ['Memory Management', 'Pointers'],
+    code: `#include <iostream>
+using namespace std;
+int main() {
+    int* arr = new int[5];
+    for (int i = 0; i < 5; i++) arr[i] = i * 2;
+    for (int i = 0; i < 5; i++) cout << arr[i] << " ";
+    delete[] arr;
+    return 0;
+}`,
+    expected_status: 'passed',
+    expected_score_min: 65,
+    expected_concepts: { 'Memory Management': true, 'Pointers': true }
+  },
+
+  // === NHÓM 11: Chuỗi ===
+  {
+    label: 'string_manipulation',
+    concepts: ['String Manipulation', 'I/O'],
+    code: `#include <iostream>
+#include <string>
+using namespace std;
+int main() {
+    string s;
+    getline(cin, s);
+    cout << s.length() << " " << s.substr(0, 3) << " " << s.find('a');
+    return 0;
+}`,
+    expected_status: 'passed',
+    expected_score_min: 65,
+    expected_concepts: { 'String Manipulation': true, 'I/O': true }
+  },
+
+  // === NHÓM 12: Boolean Logic ===
+  {
+    label: 'boolean_logic',
+    concepts: ['Boolean Logic', 'Conditionals'],
+    code: `#include <iostream>
+using namespace std;
+int main() {
+    int a, b; cin >> a >> b;
+    bool isPositive = a > 0 && b > 0;
+    bool eitherPositive = a > 0 || b > 0;
+    if (isPositive) cout << "Ca hai duong";
+    else if (eitherPositive) cout << "Mot duong";
+    else cout << "Khong duong";
+    return 0;
+}`,
+    expected_status: 'passed',
+    expected_score_min: 65,
+    expected_concepts: { 'Boolean Logic': true, 'Conditionals': true }
+  },
+
+  // === NHÓM 13: Edge cases ===
+  {
+    label: 'only_main_no_logic',
+    concepts: ['Variables', 'I/O'],
+    code: `#include <iostream>
+using namespace std;
+int main() { return 0; }`,
+    expected_status: 'failed',
+    expected_score_max: 30,
+    expected_concepts: { 'Variables': false, 'I/O': false }
+  },
+  {
+    label: 'copy_of_sample',  // tests sample_code detection (no sample_code here so just scores low)
+    concepts: ['Loops', 'I/O'],
+    code: `#include <iostream>
+using namespace std;
+int main() {
+    // Chỉ có cout không cin
+    cout << "Hello World";
+    return 0;
+}`,
+    expected_status: 'warning',
+    expected_score_min: 10,
+    expected_score_max: 55,
+    expected_concepts: { 'Loops': false, 'I/O': false }
+  },
+  {
+    label: 'arithmetic_basic',
+    concepts: ['Arithmetic', 'Variables', 'I/O'],
+    code: `#include <iostream>
+using namespace std;
+int main() {
+    double a, b;
+    cin >> a >> b;
+    cout << a+b << " " << a-b << " " << a*b << " " << a/b;
+    return 0;
+}`,
+    expected_status: 'passed',
+    expected_score_min: 65,
+    expected_concepts: { 'Arithmetic': true, 'Variables': true, 'I/O': true }
   }
 ]
 
-async function runBenchmark() {
-  console.log('📊 Starting Ground Truth Benchmark & Alignment Validation...\n')
+// ─────────────────────────────────────────────────────────────────────────────
+// Chỉ số thống kê
+// ─────────────────────────────────────────────────────────────────────────────
 
-  const systemScores = []
-  const expertScores = []
-
-  for (const sample of BENCHMARK_SAMPLES) {
-    const result = await analyzeCode(sample.code, sample.assignment, 'Benchmarking Student')
-    systemScores.push(result.score_total)
-    expertScores.push(sample.expertScore)
-
-    console.log(`📌 ${sample.name}`)
-    console.log(`   Expert Score:  ${sample.expertScore}`)
-    console.log(`   System Score:  ${result.score_total} (T1:${result.score_t1}, T2:${result.score_t2}, T3:${result.score_t3})`)
-    console.log(`   Status:        ${result.status}`)
-    console.log(`   Difference:    ${Math.abs(result.score_total - sample.expertScore)} pts\n`)
-  }
-
-  // Calculate Mean Absolute Error (MAE)
-  const n = BENCHMARK_SAMPLES.length
-  const mae = systemScores.reduce((sum, sys, i) => sum + Math.abs(sys - expertScores[i]), 0) / n
-
-  // Calculate Pearson Correlation (r)
-  const meanSys = systemScores.reduce((a, b) => a + b, 0) / n
-  const meanExp = expertScores.reduce((a, b) => a + b, 0) / n
-
-  let num = 0, denSys = 0, denExp = 0
-  for (let i = 0; i < n; i++) {
-    const diffSys = systemScores[i] - meanSys
-    const diffExp = expertScores[i] - meanExp
-    num += diffSys * diffExp
-    denSys += diffSys * diffSys
-    denExp += diffExp * diffExp
-  }
-  const pearsonR = (denSys > 0 && denExp > 0) ? (num / Math.sqrt(denSys * denExp)) : 1.0
-
-  console.log('====================================================')
-  console.log('📈 BENCHMARK RESULTS SUMMARY')
-  console.log('====================================================')
-  console.log(`   Total Samples Tested: ${n}`)
-  console.log(`   Mean Absolute Error (MAE): ${mae.toFixed(2)} pts`)
-  console.log(`   Pearson Correlation (r):   ${pearsonR.toFixed(4)}`)
-  console.log(`   Alignment Quality:         ${pearsonR >= 0.8 ? '✅ EXCELLENT (High Expert Agreement)' : '⚠️ MODERATE'}`)
-  console.log('====================================================\n')
+function rmse(predicted, actual) {
+  if (!predicted.length) return 0
+  const sum = predicted.reduce((s, p, i) => s + (p - actual[i]) ** 2, 0)
+  return Math.sqrt(sum / predicted.length)
 }
 
-runBenchmark().catch(err => console.error('Benchmark Error:', err))
+function mae(predicted, actual) {
+  if (!predicted.length) return 0
+  return predicted.reduce((s, p, i) => s + Math.abs(p - actual[i]), 0) / predicted.length
+}
+
+function scoreToCategory(score) {
+  if (score >= 70) return 'passed'
+  if (score >= 50) return 'warning'
+  return 'failed'
+}
+
+function cohensKappa(predicted, actual, labels = ['passed', 'warning', 'failed']) {
+  const n = predicted.length
+  if (n === 0) return 0
+  
+  // Build confusion matrix
+  const conf = {}
+  labels.forEach(a => { conf[a] = {}; labels.forEach(b => { conf[a][b] = 0 }) })
+  for (let i = 0; i < n; i++) conf[actual[i]][predicted[i]]++
+  
+  // Po = observed agreement
+  const po = labels.reduce((s, l) => s + (conf[l][l] || 0), 0) / n
+  
+  // Pe = expected agreement
+  const pe = labels.reduce((s, a) => {
+    const rowSum = labels.reduce((r, b) => r + (conf[a][b] || 0), 0)
+    const colSum = labels.reduce((r, b) => r + (conf[b][a] || 0), 0)
+    return s + (rowSum / n) * (colSum / n)
+  }, 0)
+  
+  return pe === 1 ? 1 : (po - pe) / (1 - pe)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Run Benchmark
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function runBenchmark() {
+  console.log('🔬 NEU CodeLens — Benchmark (Rule-Based Scoring, no actual test execution)')
+  console.log('═'.repeat(70))
+  
+  const predictedScores = []
+  const actualScoresMid = []  // midpoint of expected range
+  const predictedCats = []
+  const actualCats = []
+  
+  let conceptTP = 0, conceptFP = 0, conceptFN = 0, conceptTN = 0
+  const perConceptAcc = {}
+  
+  let passed_count = 0, failed_count = 0
+
+  for (const sample of GROUND_TRUTH) {
+    const fakeAssignment = {
+      id: 0, title: sample.label, description: '', lang: 'C++', 
+      concepts: sample.concepts, test_cases_json: '[]',
+      weight_t1: 40, weight_t2: 35, weight_t3: 25
+    }
+    
+    let result
+    try {
+      result = await analyzeCode(sample.code, fakeAssignment, 'benchmark_student')
+    } catch (err) {
+      console.error(`  ❌ Error on ${sample.label}:`, err.message)
+      continue
+    }
+    
+    const predicted = result.score_total
+    const actual_mid = ((sample.expected_score_min ?? 0) + (sample.expected_score_max ?? 100)) / 2
+    predictedScores.push(predicted)
+    actualScoresMid.push(actual_mid)
+    predictedCats.push(scoreToCategory(predicted))
+    actualCats.push(sample.expected_status)
+    
+    // Score range check
+    const inRange = (sample.expected_score_min === undefined || predicted >= sample.expected_score_min)
+                  && (sample.expected_score_max === undefined || predicted <= sample.expected_score_max)
+    
+    // Concept accuracy
+    const conceptScores = result.concept_scores || {}
+    for (const [concept, shouldBePresent] of Object.entries(sample.expected_concepts || {})) {
+      const detected = (conceptScores[concept] ?? 0) >= 60
+      if (!perConceptAcc[concept]) perConceptAcc[concept] = { tp: 0, fp: 0, fn: 0, tn: 0 }
+      if (shouldBePresent && detected) { conceptTP++; perConceptAcc[concept].tp++ }
+      else if (shouldBePresent && !detected) { conceptFN++; perConceptAcc[concept].fn++ }
+      else if (!shouldBePresent && detected) { conceptFP++; perConceptAcc[concept].fp++ }
+      else { conceptTN++; perConceptAcc[concept].tn++ }
+    }
+    
+    const icon = inRange ? '✅' : '❌'
+    if (inRange) passed_count++; else failed_count++
+    console.log(`${icon} [${sample.label.padEnd(35)}] pred=${String(predicted).padStart(3)} status=${result.status.padEnd(7)} (expected: ${sample.expected_status})`)
+  }
+  
+  console.log('\n' + '─'.repeat(70))
+  console.log('📊 Statistical Metrics')
+  console.log('─'.repeat(70))
+  console.log(`  Samples:     ${GROUND_TRUTH.length}`)
+  console.log(`  In-range:    ${passed_count}/${GROUND_TRUTH.length} (${Math.round(passed_count/GROUND_TRUTH.length*100)}%)`)
+  
+  const rmsVal = rmse(predictedScores, actualScoresMid)
+  const maeVal = mae(predictedScores, actualScoresMid)
+  console.log(`  RMSE:        ${rmsVal.toFixed(2)} (Root Mean Squared Error vs expected midpoint)`)
+  console.log(`  MAE:         ${maeVal.toFixed(2)} (Mean Absolute Error)`)
+  
+  const kappa = cohensKappa(predictedCats, actualCats)
+  console.log(`  Cohen's κ:   ${kappa.toFixed(3)} ${kappa > 0.8 ? '(Almost Perfect ✅)' : kappa > 0.6 ? '(Substantial ✅)' : kappa > 0.4 ? '(Moderate ⚠️)' : '(Fair ❌)'}`)
+  
+  console.log('\n📌 Concept Detection (per-concept precision/recall)')
+  console.log('─'.repeat(70))
+  for (const [concept, counts] of Object.entries(perConceptAcc)) {
+    const { tp, fp, fn, tn } = counts
+    const precision = tp + fp > 0 ? tp / (tp + fp) : 1
+    const recall = tp + fn > 0 ? tp / (tp + fn) : 1
+    const f1 = precision + recall > 0 ? 2 * precision * recall / (precision + recall) : 0
+    const icon = f1 >= 0.8 ? '✅' : f1 >= 0.5 ? '⚠️' : '❌'
+    console.log(`  ${icon} ${concept.padEnd(25)} P=${precision.toFixed(2)} R=${recall.toFixed(2)} F1=${f1.toFixed(2)}`)
+  }
+  
+  const overallF1 = conceptTP + conceptFP + conceptFN > 0
+    ? (2 * conceptTP) / (2 * conceptTP + conceptFP + conceptFN)
+    : 0
+  console.log(`\n  Overall Concept F1: ${overallF1.toFixed(3)}`)
+  console.log('═'.repeat(70))
+  
+  if (kappa >= 0.6 && rmsVal <= 20) {
+    console.log('✅ Hệ thống đạt ngưỡng chất lượng tối thiểu (κ≥0.6, RMSE≤20)')
+  } else {
+    console.log('⚠️  Hệ thống chưa đạt ngưỡng — cần review scoring rules')
+  }
+  
+  process.exit(0)
+}
+
+runBenchmark().catch(e => { console.error('Benchmark error:', e); process.exit(1) })

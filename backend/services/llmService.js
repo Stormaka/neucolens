@@ -240,7 +240,11 @@ async function runCppTestCases(code, testCases) {
         })
 
         if (runResult.status === null) {
-          errors.push(`Test "${tc.input?.substring(0, 20)}": Timeout`)
+          if (tc.hidden) {
+            errors.push(`Test #${testCases.indexOf(tc) + 1} (Hidden): Timeout`)
+          } else {
+            errors.push(`Test "${tc.input?.substring(0, 20)}": Timeout`)
+          }
           continue
         }
 
@@ -465,7 +469,9 @@ export async function analyzeCode(code, assignment, studentName = '') {
       break
 
     case 'RUNNER_DISABLED':
-      t1 = Math.round(maxT1 * 0.50)
+      // Không cho điểm T1 cố định khi runner bị tắt — dùng conceptCoverageScore làm proxy
+      // tối đa 60% maxT1 để phân biệt rõ với code có test pass thực sự
+      t1 = Math.round(maxT1 * Math.min(0.60, conceptCoverageScore / 100))
       break
 
     case 'NO_TEST_CASES':
@@ -494,8 +500,8 @@ export async function analyzeCode(code, assignment, studentName = '') {
     return coms.filter(c => !/^\/\/\s*(int|double|float|cout|cin|\d+)\b/.test(c)).length > 0
   })()
 
-  const ast = parseCppAST(code)
-  const hasExtraFunctions = ast.functions.filter(f => f.name !== 'main').length > 0
+  // Reuse ast already computed by adapter above (line 402) — avoid redundant parse
+  const hasExtraFunctions = (ast.functions || []).filter(f => f.name !== 'main').length > 0
 
   const branchCount = (code.match(/\b(if|else if|for|while|case)\b/g) || []).length
   const isReasonableComplexity = branchCount >= 1 && branchCount <= 20
@@ -616,7 +622,9 @@ function buildFeedback({ code, status, total, t1, t2, t3, maxT1, maxT2, maxT3,
   if (runnerStatus === 'RUNNER_DISABLED' && totalCount === 0) {
     parts.push('⚠️ Runner bi tat tren production. T1 tinh theo concept coverage (co giam).Giao vien: bat ENABLE_LOCAL_RUNNER=true.')
   } else if (runnerStatus === 'COMPILE_FAILED') {
-    parts.push('❌ COMPILE ERROR: Code khong bien dich duoc. T1 = 5%. Kiem tra cu phap C++.')
+    parts.push('❌ COMPILE ERROR: Code không biên dịch được. T1 = 0 (điểm chạy test). Kiểm tra cú pháp C++.')
+  } else if (runnerStatus === 'RUNNER_TIMEOUT') {
+    parts.push('⏱️ TIMEOUT: Code chạy quá 2000ms. T1 = 0. Kiểm tra thuật toán hoặc vòng lặp.')
   }
 
   if (totalCount > 0) {
