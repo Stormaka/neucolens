@@ -8,7 +8,7 @@ import { pythonAdapter } from './pythonAdapter.js'
 const adapters = {
   'C++': cppAdapter,
   'CPP': cppAdapter,
-  'Python': pythonAdapter,
+  'PYTHON': pythonAdapter,
   'PY': pythonAdapter
 }
 

@@ -1,19 +1,14 @@
 /**
- * Lightweight C++ AST Parser & Big-O Complexity Estimator
- * Phân tích cấu trúc cú pháp thực tế của code C++:
- * - Cây phân cấp khối lệnh (Scopes & Block Depth)
- * - Khai báo hàm, tham số, câu lệnh return và danh sách lời gọi hàm (Call Graph)
- * - Khai báo mảng/vector và truy cập chỉ mục
- * - Đệ quy (Direct & Mutual recursion)
- * - Ước lượng độ phức tạp thời gian Big-O: O(1), O(N), O(N^2), O(N^3), O(log N)
+ * Lightweight C++ AST Parser & Big-O Complexity Estimator — Fixed
+ * Features:
+ * - Accurate Function Body Extraction (excluding declaration signature header)
+ * - Scope Stack Tracking for braced and single-statement sequential loops
+ * - Call Graph & Direct/Mutual Recursion Analysis
+ * - Accurate Big-O Time Complexity estimation
  */
 
-/**
- * Tokenize code C++ cơ bản
- */
 export function tokenizeCpp(code) {
   if (!code) return []
-  // Strip string literals & comments first to avoid fake tokens
   let clean = code.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""')
   clean = clean.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
 
@@ -27,9 +22,6 @@ export function tokenizeCpp(code) {
   return tokens
 }
 
-/**
- * Phân tích AST của C++ source code
- */
 export function parseCppAST(code) {
   if (!code || typeof code !== 'string') {
     return {
@@ -45,17 +37,15 @@ export function parseCppAST(code) {
     }
   }
 
-  // Strip strings and comments
+  // Strip string literals & comments
   let cleanCode = code.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""')
   cleanCode = cleanCode.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
 
-  const lines = cleanCode.split('\n')
   const functions = []
   const loops = []
-  const conditionals = []
   const arrays = []
 
-  // Track function definitions: e.g. void sapXep(int a[], int n) { ... }
+  // 1. Extract Function Definitions & strictly isolate bodyOnly (after '{')
   const funcRegex = /\b(void|int|double|float|bool|string|long long|long)\s+([a-zA-Z_]\w*)\s*\(([^)]*)\)\s*\{/g
   let fMatch
   while ((fMatch = funcRegex.exec(cleanCode)) !== null) {
@@ -63,30 +53,33 @@ export function parseCppAST(code) {
     const name = fMatch[2]
     const params = fMatch[3].trim()
     const startIndex = fMatch.index
+    const openingBraceIndex = cleanCode.indexOf('{', startIndex)
 
-    // Extract body using brace matching
-    let depth = 0, bodyEnd = startIndex
+    let depth = 0, bodyEnd = openingBraceIndex
     let foundStart = false
-    for (let i = startIndex; i < cleanCode.length; i++) {
+    for (let i = openingBraceIndex; i < cleanCode.length; i++) {
       if (cleanCode[i] === '{') { depth++; foundStart = true }
       else if (cleanCode[i] === '}') {
         depth--
         if (foundStart && depth === 0) { bodyEnd = i; break }
       }
     }
-    const body = cleanCode.substring(startIndex, bodyEnd + 1)
-    functions.push({ name, returnType, params, body, startIndex, bodyEnd })
+
+    // Body ONLY — content between { and } (excluding function header)
+    const bodyOnly = cleanCode.substring(openingBraceIndex + 1, bodyEnd)
+    functions.push({ name, returnType, params, bodyOnly, startIndex, bodyEnd })
   }
 
-  // Track call graph & recursion
+  // 2. Build Call Graph & Recursion Detection using bodyOnly
   const callGraph = {}
   let hasRecursion = false
+
   functions.forEach(fn => {
     callGraph[fn.name] = []
     functions.forEach(otherFn => {
       const callRegex = new RegExp(`\\b${otherFn.name}\\s*\\(`, 'g')
-      const matches = fn.body.match(callRegex) || []
-      if (matches.length > 0) {
+      const matches = (fn.bodyOnly.match(callRegex) || []).length
+      if (matches > 0) {
         callGraph[fn.name].push(otherFn.name)
         if (fn.name === otherFn.name && fn.name !== 'main') {
           hasRecursion = true
@@ -95,33 +88,85 @@ export function parseCppAST(code) {
     })
   })
 
-  // Track loop nesting depth accurately using line-by-line block stack
-  let currentDepth = 0
-  let maxLoopNestDepth = 0
-  let currentLoopDepth = 0
-
-  const loopStartRegex = /\b(for|while)\s*\(/
-  lines.forEach((line, lineIdx) => {
-    const trimmed = line.trim()
-    if (loopStartRegex.test(trimmed)) {
-      currentLoopDepth++
-      loops.push({ lineIndex: lineIdx, depth: currentLoopDepth, text: trimmed })
-      if (currentLoopDepth > maxLoopNestDepth) {
-        maxLoopNestDepth = currentLoopDepth
+  // Detect mutual recursion: A -> B and B -> A
+  functions.forEach(fnA => {
+    (callGraph[fnA.name] || []).forEach(fnBName => {
+      if (fnA.name !== fnBName && callGraph[fnBName]?.includes(fnA.name)) {
+        hasRecursion = true
       }
+    })
+  })
+
+  // 3. Track Loop Nesting via character-by-character scan (handles same-line nesting)
+  let maxLoopNestDepth = 0
+  {
+    const loopOpenRegex = /\b(for|while)\s*\(/g
+    // Find all loop opener positions and their parenthesis-close positions
+    const loopPositions = [] // { start, parenEnd }
+    let m
+    while ((m = loopOpenRegex.exec(cleanCode)) !== null) {
+      // Find matching ')' for the condition
+      let depth = 0, parenEnd = -1
+      for (let i = m.index + m[0].length - 1; i < cleanCode.length; i++) {
+        if (cleanCode[i] === '(') depth++
+        else if (cleanCode[i] === ')') { depth--; if (depth === 0) { parenEnd = i; break } }
+      }
+      if (parenEnd !== -1) loopPositions.push({ start: m.index, parenEnd, keyword: m[1] })
     }
-    for (const char of trimmed) {
-      if (char === '{') currentDepth++
-      else if (char === '}') {
-        currentDepth = Math.max(0, currentDepth - 1)
-        if (currentLoopDepth > currentDepth) {
-          currentLoopDepth = currentDepth
+
+    // For each loop, determine its body start and use brace depth to count nesting
+    const scopeStack2 = [] // { loopStart, bodyStart, depth }
+
+    // Process character by character to maintain brace depth
+    let braceDepth2 = 0
+    let parenDepth2 = 0
+    let loopIdx = 0 // pointer into sorted loopPositions
+
+    for (let ci = 0; ci < cleanCode.length; ci++) {
+      // Check if a loop starts here (before processing the char so parenDepth is current)
+      while (loopIdx < loopPositions.length && loopPositions[loopIdx].start === ci) {
+        const lp = loopPositions[loopIdx]
+        loopIdx++
+        // Determine body start: after parenEnd, skip whitespace and look for { or statement
+        let bodyStart = lp.parenEnd + 1
+        while (bodyStart < cleanCode.length && /\s/.test(cleanCode[bodyStart])) bodyStart++
+        const hasBrace = cleanCode[bodyStart] === '{'
+        const currentLevel = scopeStack2.filter(s => s.type === 'loop').length + 1
+        maxLoopNestDepth = Math.max(maxLoopNestDepth, currentLevel)
+        loops.push({ lineIndex: cleanCode.substring(0, lp.start).split('\n').length - 1, depth: currentLevel, keyword: lp.keyword })
+        scopeStack2.push({ type: 'loop', hasBrace, startBraceDepth: braceDepth2, bodyStart, isSingleStatement: !hasBrace })
+      }
+
+      const ch = cleanCode[ci]
+      if (ch === '(') {
+        parenDepth2++
+      } else if (ch === ')') {
+        parenDepth2 = Math.max(0, parenDepth2 - 1)
+      } else if (ch === '{') {
+        braceDepth2++
+      } else if (ch === '}') {
+        braceDepth2--
+        // Pop any braced loop scopes whose brace closed
+        while (scopeStack2.length > 0) {
+          const top = scopeStack2[scopeStack2.length - 1]
+          if (!top.isSingleStatement && braceDepth2 < top.startBraceDepth + 1) {
+            scopeStack2.pop()
+          } else break
+        }
+      } else if (ch === ';' && parenDepth2 === 0) {
+        // Only pop single-statement loops at statement-level semicolons
+        // (not the semicolons inside for(init; cond; incr))
+        while (scopeStack2.length > 0 && scopeStack2[scopeStack2.length - 1].isSingleStatement) {
+          scopeStack2.pop()
         }
       }
     }
-  })
 
-  // Detect Array / Vector declarations & indexing
+    // Override the loops array with our recomputed one (clear previous line-by-line remnants)
+    loops.splice(0, loops.length, ...loops.filter(l => l.keyword))
+  } // end block #3
+
+  // 4. Detect Arrays & Vectors
   const arrayDeclRegex = /\b(int|double|float|char|string)\s+([a-zA-Z_]\w*)\s*\[\s*(\d+|\w+)\s*\]/g
   let aMatch
   while ((aMatch = arrayDeclRegex.exec(cleanCode)) !== null) {
@@ -133,14 +178,15 @@ export function parseCppAST(code) {
     arrays.push({ name: vMatch[2], type: vMatch[1], size: 'dynamic', isVector: true })
   }
 
-  // Estimate Big-O Time Complexity based on nesting and patterns
+  // 5. Estimate Big-O Time Complexity
   let estimatedBigO = 'O(1)'
   if (hasRecursion) {
+    // Find the recursive function
     const recursiveFn = functions.find(f => f.name !== 'main' && callGraph[f.name]?.includes(f.name))
     if (recursiveFn) {
-      const callsCount = (recursiveFn.body.match(new RegExp(`\\b${recursiveFn.name}\\s*\\(`, 'g')) || []).length
+      const callsCount = (recursiveFn.bodyOnly.match(new RegExp(`\\b${recursiveFn.name}\\s*\\(`, 'g')) || []).length
       if (callsCount >= 2) estimatedBigO = 'O(2^N)'
-      else if (recursiveFn.body.includes('/ 2') || recursiveFn.body.includes('/2')) estimatedBigO = 'O(log N)'
+      else if (recursiveFn.bodyOnly.includes('/ 2') || recursiveFn.bodyOnly.includes('/2')) estimatedBigO = 'O(log N)'
       else estimatedBigO = 'O(N)'
     } else {
       estimatedBigO = 'O(N)'

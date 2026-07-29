@@ -149,10 +149,12 @@ function initSchema() {
       submission_id INTEGER NOT NULL REFERENCES submissions(id) ON DELETE CASCADE,
       user_id INTEGER NOT NULL REFERENCES users(id),
       user_role TEXT NOT NULL CHECK(user_role IN ('student','teacher')),
-      rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
-      comment TEXT,
-      helpfulness_category TEXT DEFAULT 'helpful',
-      created_at TEXT DEFAULT (datetime('now'))
+      rating INTEGER NOT NULL CHECK(rating IN (1,2,3,4,5)),
+      comment TEXT CHECK(comment IS NULL OR length(comment) <= 500),
+      helpfulness_category TEXT DEFAULT 'helpful'
+        CHECK(helpfulness_category IN ('helpful','incorrect','unclear','too_generic','unsafe')),
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(submission_id, user_id)
     );
 
     -- Storm v4: AI_Messages

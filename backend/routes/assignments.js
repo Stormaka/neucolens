@@ -44,11 +44,14 @@ router.get('/classroom/:id', authenticate, verifyClassroomAccess, (req, res) => 
 
   // #11: Use only camelCase avgScore; #10: strip raw concepts_json since concepts (parsed) is included
   const data = asgns.map(a => {
-    const { avg_score, concepts_json, ...aClean } = a
+    const { avg_score, concepts_json, test_cases_json, ...aClean } = a
+    const allTests = JSON.parse(test_cases_json || '[]')
+    const sampleTests = req.user.role === 'teacher' ? allTests : allTests.filter(t => !t.hidden)
     return {
       ...aClean,
       concepts: JSON.parse(concepts_json || '[]'),
-      avgScore: Math.round(avg_score || 0)
+      avgScore: Math.round(avg_score || 0),
+      sample_test_cases: sampleTests
     }
   })
 

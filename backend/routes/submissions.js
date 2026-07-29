@@ -64,11 +64,8 @@ router.post('/', authenticate, requireRole('student'), async (req, res) => {
     return res.status(409).json({ error: 'Lỗi tạo bài nộp. Vui lòng thử lại.', code: 'INSERT_FAILED' })
   }
 
-  // Trả về ngay với status 202 để không block HTTP response
-  res.status(202).json({ id: subId, status: 'pending', message: 'Bài nộp đang được phân tích...' })
-
-  // 4.6/4.7 Fix: evaluation chạy sau khi response đã gửi (non-blocking)
-  setImmediate(async () => {
+  // Helper function để thực thi grading & lưu kết quả
+  const runGrading = async () => {
     try {
       const analysis = await analyzeCode(
         code,
@@ -99,12 +96,29 @@ router.post('/', authenticate, requireRole('student'), async (req, res) => {
         JSON.parse(asgn.concepts_json || '[]'),
         analysis.concept_scores || {}
       )
+      return db.prepare('SELECT * FROM submissions WHERE id=?').get(subId)
     } catch (err) {
-      console.error('Background LLM analysis error:', err)
+      console.error('LLM analysis error:', err)
       db.prepare(`UPDATE submissions SET status='failed', llm_feedback=? WHERE id=?`)
         .run('Lỗi phân tích. Vui lòng thử lại.', subId)
+      return null
     }
-  })
+  }
+
+  // Trên Vercel Serverless: Phải chấm đồng bộ để không bị freeze container
+  const isServerless = Boolean(process.env.VERCEL)
+  if (isServerless) {
+    const completedSub = await runGrading()
+    if (completedSub) {
+      const { misconceptions_json, ...clean } = completedSub
+      return res.status(201).json({ ...clean, misconceptions: JSON.parse(misconceptions_json || '[]') })
+    }
+    return res.status(201).json({ id: subId, status: 'failed', message: 'Lỗi phân tích bài nộp' })
+  } else {
+    // Trên Node.js server thông thường: Trả 202 ngay và chấm async
+    res.status(202).json({ id: subId, status: 'pending', message: 'Bài nộp đang được phân tích...' })
+    setImmediate(runGrading)
+  }
 })
 
 // ── #5/#15: Batch endpoint — trả latest submission cho nhiều assignments trong 1 request ──
@@ -240,41 +254,73 @@ router.patch('/:id/override', authenticate, requireRole('teacher'), (req, res) =
   res.json({ ...clean, misconceptions: JSON.parse(misconceptions_json || '[]') })
 })
 
-// POST /api/submissions/:id/rate-feedback — Đánh giá chất lượng phản hồi AI (Ground Truth Evaluation)
-router.post('/:id/rate-feedback', authenticate, (req, res) => {
+// POST /api/submissions/:id/rate-feedback — Đánh giá chất lượng phản hồi AI
+router.post('/:id/rate-feedback', authenticate, async (req, res) => {
   const { rating, comment, helpfulness_category } = req.body
   const numericRating = Number(rating)
-  if (!numericRating || numericRating < 1 || numericRating > 5) {
+  if (!Number.isInteger(numericRating) || numericRating < 1 || numericRating > 5) {
     return res.status(400).json({ error: 'Đánh giá phải từ 1 đến 5 sao', code: 'INVALID_RATING' })
   }
 
+  const validCategories = ['helpful', 'incorrect', 'unclear', 'too_generic', 'unsafe']
+  const finalCategory = validCategories.includes(helpfulness_category) ? helpfulness_category : 'helpful'
+
+  if (comment && comment.length > 500) {
+    return res.status(400).json({ error: 'Comment không vượt quá 500 ký tự', code: 'COMMENT_TOO_LONG' })
+  }
+
   const db = getDb()
-  const sub = db.prepare('SELECT * FROM submissions WHERE id=?').get(req.params.id)
+  const sub = db.prepare(`
+    SELECT s.*, a.classroom_id
+    FROM submissions s JOIN assignments a ON a.id = s.assignment_id
+    WHERE s.id=?
+  `).get(req.params.id)
   if (!sub) return res.status(404).json({ error: 'Không tìm thấy bài nộp', status: 404 })
 
   if (req.user.role === 'student' && sub.student_id !== req.user.id) {
     return res.status(403).json({ error: 'Bạn chỉ được đánh giá phản hồi bài nộp của chính mình' })
   }
 
-  const result = db.prepare(`
-    INSERT INTO feedback_ratings (submission_id, user_id, user_role, rating, comment, helpfulness_category)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(
-    req.params.id,
-    req.user.id,
-    req.user.role,
-    numericRating,
-    comment || '',
-    helpfulness_category || 'helpful'
-  )
+  // Teacher: kiểm tra classroom ownership
+  if (req.user.role === 'teacher') {
+    const owns = db.prepare('SELECT 1 FROM classrooms WHERE id=? AND lecturer_id=?')
+      .get(sub.classroom_id, req.user.id)
+    if (!owns) {
+      return res.status(403).json({ error: 'Bạn không có quyền đánh giá submission của lớp khác', code: 'FORBIDDEN_CLASSROOM' })
+    }
+  }
 
-  res.status(201).json({
-    success: true,
-    rating_id: result.lastInsertRowid,
-    submission_id: Number(req.params.id),
-    rating: numericRating,
-    message: 'Cảm ơn bạn đã đánh giá phản hồi AI!'
-  })
+  try {
+    // UPSERT: cùng user + cùng submission → cập nhật thay vì tạo trùng
+    const existing = db.prepare('SELECT id FROM feedback_ratings WHERE submission_id=? AND user_id=?')
+      .get(req.params.id, req.user.id)
+
+    let ratingId
+    if (existing) {
+      db.prepare(`
+        UPDATE feedback_ratings SET rating=?, comment=?, helpfulness_category=? WHERE id=?
+      `).run(numericRating, comment || '', finalCategory, existing.id)
+      ratingId = existing.id
+    } else {
+      const result = db.prepare(`
+        INSERT INTO feedback_ratings (submission_id, user_id, user_role, rating, comment, helpfulness_category)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(req.params.id, req.user.id, req.user.role, numericRating, comment || '', finalCategory)
+      ratingId = result.lastInsertRowid
+    }
+
+    res.status(existing ? 200 : 201).json({
+      success: true,
+      rating_id: ratingId,
+      submission_id: Number(req.params.id),
+      rating: numericRating,
+      updated: Boolean(existing),
+      message: existing ? 'Đã cập nhật đánh giá của bạn.' : 'Cảm ơn bạn đã đánh giá phản hồi AI!'
+    })
+  } catch (err) {
+    console.error('Rate feedback error:', err.message)
+    res.status(500).json({ error: 'Lỗi lưu đánh giá. Vui lòng thử lại.', code: 'RATE_FAILED' })
+  }
 })
 
 

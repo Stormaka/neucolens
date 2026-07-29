@@ -11,6 +11,8 @@ import https from 'https'
 import crypto from 'crypto'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { parseCppAST } from './astParser.js'
+import { getLanguageAdapter } from './languages/index.js'
+
 
 
 // ── Gemini Flash client ────────────────────────────────────────────────────────
@@ -251,10 +253,18 @@ async function runCppTestCases(code, testCases) {
         if (actual === expected || isClose) {
           passCount++
         } else {
-          errors.push(`Test "${tc.input?.substring(0, 20)}": got "${actual}", expected "${expected}"`)
+          if (tc.hidden) {
+            errors.push(`Test #${testCases.indexOf(tc) + 1} (Hidden): Incorrect Output (Wrong Answer)`)
+          } else {
+            errors.push(`Test "${tc.input?.substring(0, 20)}": got "${actual}", expected "${expected}"`)
+          }
         }
       } catch {
-        errors.push(`Test crash`)
+        if (tc.hidden) {
+          errors.push(`Test #${testCases.indexOf(tc) + 1} (Hidden): Runtime Error / Crash`)
+        } else {
+          errors.push(`Test crash`)
+        }
       }
     }
   } catch (e) {
@@ -345,159 +355,14 @@ function cleanCodeForAnalysis(code) {
   return cleaned
 }
 
-// ── Tính điểm concept thực chất (AST & Context-Aware) ───────────────────────
-function scoreConcept(concept, rawCode, cachedAst = null) {
-  const ast = cachedAst || parseCppAST(rawCode)
-  const cleanedCode = cleanCodeForAnalysis(rawCode)
-
-  // Nested Loops: Dựa trên AST maxNestDepth thực sự (loại bỏ lặp nối tiếp)
-  if (concept === 'Nested Loops') {
-    if (ast.maxNestDepth >= 2) return 100
-    if (ast.maxNestDepth === 1) return 30  // chỉ lồng 1 tầng hoặc nối tiếp
-    return 0
-  }
-
-  // Recursion: Dựa trên AST callGraph & direct/mutual recursion
-  if (concept === 'Recursion') {
-    return ast.hasRecursion ? 100 : 0
-  }
-
-  // Functions: Phải khai báo hàm riêng biệt ngoài main() trong AST
-  if (concept === 'Functions') {
-    const nonMainFuncs = ast.functions.filter(f => f.name !== 'main')
-    if (nonMainFuncs.length >= 2) return 100
-    if (nonMainFuncs.length === 1) return 85
-    return 0
-  }
-
-  // Arrays: Khai báo mảng/vector trong AST
-  if (concept === 'Arrays') {
-    if (ast.arrays.length >= 1) return 100
-    const hasIndexAccess = /\w+\s*\[\s*\w+\s*\]/.test(cleanedCode)
-    return hasIndexAccess ? 60 : 0
-  }
-
-  // Loops: Có ít nhất 1 loop trong AST
-  if (concept === 'Loops') {
-    if (ast.loops.length >= 2) return 100
-    if (ast.loops.length === 1) return 80
-    return 0
-  }
-
-
-  // Arrays: chỉ tính nếu khai báo mảng thực sự và truy cập chỉ mục
-  if (concept === 'Arrays') {
-    const hasArrayDecl = /\b(int|double|float|char|string)\s+\w+\s*\[\d+\]/.test(cleanedCode)
-    const hasVectorDecl = /\b(?:std::)?vector\s*<[^>]+>\s+\w+/.test(cleanedCode)
-    const hasIndexAccess = /\w+\s*\[\s*\w+\s*\]/.test(cleanedCode)
-    const hasRangeIteration = /for\s*\([^:]+:\s*\w+\s*\)/.test(cleanedCode)
-    if ((hasArrayDecl || hasVectorDecl) && (hasIndexAccess || hasRangeIteration)) return 100
-    if (hasArrayDecl || hasVectorDecl || hasIndexAccess) return 60
-    return 0
-  }
-
-  // Variables: phải khai báo biến thực sự có sử dụng
-  if (concept === 'Variables') {
-    const decls = [...cleanedCode.matchAll(/\b(int|double|float|char|string|bool|long)\s+([a-zA-Z_]\w*)/g)]
-    const validDecls = decls.filter(m => m[2] !== 'main')
-    if (validDecls.length >= 2) return 100
-    if (validDecls.length === 1) return 60
-    return 0
-  }
-
-  // Sorting: phải có swap pattern thực sự hoặc std::sort
-  if (concept === 'Sorting Algorithm') {
-    const hasLibrarySort = /\b(?:std::)?sort\s*\(/.test(cleanedCode)
-    if (hasLibrarySort) return 100
-    const hasTemp = /\b(int|double|float|char)\s+t\s*=|\btemp\s*=|\bswap\s*\(/.test(cleanedCode)
-    const hasLoop = /for\s*\(/.test(cleanedCode)
-    const hasNestedLoop = (cleanedCode.match(/for\s*\(/g) || []).length >= 2
-    if (hasNestedLoop && hasTemp) return 100
-    if (hasTemp && hasLoop) return 70
-    if (hasTemp) return 40
-    return 0
-  }
-
-  // Conditionals: phải có if/else với body chứa câu lệnh thực sự (chống lách if(){} else{})
-  if (concept === 'Conditionals') {
-    const ifBlocks = [...cleanedCode.matchAll(/\bif\s*\(([^)]+)\)\s*\{([^}]*)\}/g)]
-    const activeIfs = ifBlocks.filter(m => {
-      const cond = m[1].trim()
-      const body = m[2].trim()
-      if (['true', '1', '0', 'false'].includes(cond)) return false
-      return body.length > 0 && body !== ';'
-    })
-    const hasElse = /\belse\b/.test(cleanedCode)
-    const hasElseIf = /else\s+if\s*\(/.test(cleanedCode)
-
-    if (hasElseIf && activeIfs.length > 0) return 100
-    if (hasElse && activeIfs.length > 0) return 85
-    if (activeIfs.length > 0) return 50
-    return 0
-  }
-
-  // Functions: phải có định nghĩa hàm thực sự có thân lệnh hoặc tham số (chống void a(){} void b(){})
-  if (concept === 'Functions') {
-    const funcDefs = [...cleanedCode.matchAll(/\b(void|int|double|float|bool|string)\s+(\w+)\s*\(([^)]*)\)\s*\{([^}]*)\}/g)]
-    const nonMain = funcDefs.filter(m => m[2] !== 'main')
-    
-    if (!nonMain.length) return 0
-
-    const activeFuncs = nonMain.filter(m => {
-      const name = m[2]
-      const params = m[3].trim()
-      const body = m[4].trim()
-      if (!body && !params) return false // Hàm rỗng không tham số -> rác
-      const callMatches = (cleanedCode.match(new RegExp(`\\b${name}\\s*\\(`, 'g')) || []).length
-      return callMatches >= 2 || body.includes('return') || params.length > 0
-    })
-
-    if (activeFuncs.length >= 2) return 100
-    if (activeFuncs.length === 1) return 80
-    return 0
-  }
-
-  // I/O: cin >> var VÀ cout << expr
-  if (concept === 'I/O') {
-    const hasCin = /\bcin\s*>>\s*[a-zA-Z_]\w*/.test(cleanedCode)
-    const hasCout = /\bcout\s*<</.test(cleanedCode)
-    const hasPrompt = /cout\s*<<\s*""/.test(cleanedCode) || /cout\s*<<\s*"[^"]*"/.test(rawCode)
-    if (hasCin && hasCout && hasPrompt) return 100
-    if (hasCin && hasCout) return 80
-    if (hasCin || hasCout) return 40
-    return 0
-  }
-
-  // Loops: phải có vòng lặp với body thực sự (chống for(;;){})
-  if (concept === 'Loops') {
-    const forMatches = [...cleanedCode.matchAll(/\bfor\s*\([^)]*\)\s*\{([^}]*)\}/g)]
-    const whileMatches = [...cleanedCode.matchAll(/\bwhile\s*\([^)]*\)\s*\{([^}]*)\}/g)]
-    const hasActiveFor = forMatches.some(m => m[1].trim().length > 0)
-    const hasActiveWhile = whileMatches.some(m => m[1].trim().length > 0)
-
-    if (hasActiveFor && hasActiveWhile) return 100
-    if (hasActiveFor || hasActiveWhile) return 80
-    return 0
-  }
-
-  // Generic Concept Keyword Matching: quét trên cleanedCode (đã strip comment & string)
-  const keywords = CONCEPT_KEYWORDS[concept] || [concept.toLowerCase()]
-  if (keywords.length === 0) return 0
-
-  let hits = 0
-  keywords.forEach(kw => {
-    if (cleanedCode.toLowerCase().includes(kw.toLowerCase())) hits++
-  })
-
-  const ratio = hits / keywords.length
-  if (ratio === 0) return 0
-  if (ratio <= 0.25) return 20
-  if (ratio <= 0.5) return 50
-  if (ratio <= 0.75) return 75
-  return 100
+// ── Tính điểm concept thực chất (AST & Modular Language Adapter) ────────────
+function scoreConcept(concept, rawCode, cachedAst = null, lang = 'C++') {
+  const adapter = getLanguageAdapter(lang)
+  return adapter.scoreConcept(concept, rawCode, cachedAst)
 }
 
 // ── Main analysis function ────────────────────────────────────────────────────
+
 export async function analyzeCode(code, assignment, studentName = '') {
   const concepts = assignment.concepts || []
   const lang = assignment.lang || 'C++'
@@ -532,44 +397,41 @@ export async function analyzeCode(code, assignment, studentName = '') {
     }
   }
 
-  // ── Bước 3: Phát hiện lỗi logic cụ thể ─────────────────────────────────
+  // ── Bước 3: AST Parsing & Phân tích ngôn ngữ ─────────────────────────────
+  const adapter = getLanguageAdapter(lang)
+  const ast = adapter.parseAST(code)
+
   const hasInfiniteLoop = detectInfiniteLoop(code)
   const hasOffByOne = detectOffByOne(code, concepts)
   const hasMultipleIf = detectMultipleIfChain(code)
   const aiResult = detectAIGenerated(code, concepts, lang)
   const misconceptions = []
 
-  // ── Bước 4: Tính T1 — Correctness ───────────────────────────────────────
-  // Dựa trên concept coverage THỰC SỰ
   let conceptCoverageScore = 0
   const concept_scores = {}
 
   if (concepts.length > 0) {
     concepts.forEach(c => {
-      concept_scores[c] = scoreConcept(c, code)
+      concept_scores[c] = adapter.scoreConcept(c, code, ast)
     })
     const totalConceptScore = concepts.reduce((sum, c) => sum + (concept_scores[c] || 0), 0)
-    conceptCoverageScore = Math.round(totalConceptScore / concepts.length) // 0-100
+    conceptCoverageScore = Math.round(totalConceptScore / concepts.length)
   } else {
-    // Không có concept → chấm dựa trên cấu trúc code
-    const hasMain = /int\s+main/.test(code)
-    const hasLogic = /if|for|while/.test(code)
-    const hasIO = /cin|cout/.test(code)
-    conceptCoverageScore = [hasMain, hasLogic, hasIO].filter(Boolean).length * 33
+    conceptCoverageScore = (ast.hasMain || (ast.functions && ast.functions.length > 0)) ? 80 : 0
   }
 
-  // 4.5 Fix: phan biet ro NO_TEST_CASES vs RUNNER_DISABLED vs COMPILE_FAILED
+  // ── Bước 4: Chạy Test Cases & Phân tích Runner Status ────────────────────
   let testResult = { passCount: 0, totalCount: 0, errors: [] }
   let runnerStatus = 'NO_TEST_CASES'
   const testCases = (() => {
     try { return JSON.parse(assignment.test_cases_json || '[]') } catch { return [] }
   })()
 
-  if (lang === 'C++' && testCases.length > 0 && !hasInfiniteLoop) {
+  if (testCases.length > 0 && !hasInfiniteLoop) {
     const localRunnerAllowed = process.env.ENABLE_LOCAL_RUNNER === 'true' || process.env.NODE_ENV !== 'production'
     if (!localRunnerAllowed) {
       runnerStatus = 'RUNNER_DISABLED'
-    } else {
+    } else if (lang === 'C++') {
       testResult = await runCppTestCases(code, testCases)
       if (testResult.errors.some(e => e.includes('compile') || e.includes('Compile'))) {
         runnerStatus = 'COMPILE_FAILED'
@@ -581,22 +443,35 @@ export async function analyzeCode(code, assignment, studentName = '') {
     }
   }
 
-  // ── Bước 4: Tính T1 — Functional Correctness (Execution 100%) ─────────────
-  // Khắc phục double-counting: T1 thuần túy đo tính đúng đắn khi thực thi test cases
+  // ── Bước 5: Tính T1 — Functional Correctness (Switched by Runner Status) ────
   let t1 = 0
-  if (runnerStatus === 'SUCCESS' && testResult.totalCount > 0) {
-    const testPassRate = testResult.passCount / testResult.totalCount
-    t1 = Math.round(maxT1 * testPassRate)
-  } else if (runnerStatus === 'RUNNER_DISABLED' && testCases.length > 0) {
-    // Trình chạy bị tắt trên serverless: tính 50% baseline cho việc hoàn thành bài
-    t1 = Math.round(maxT1 * 0.50)
-  } else if (runnerStatus === 'COMPILE_FAILED') {
-    t1 = 0  // Lỗi biên dịch -> 0 điểm đúng đắn
-  } else {
-    // Không có test cases: Đánh giá bằng cấu trúc thực thi C++ tối thiểu
-    const ast = parseCppAST(code)
-    const hasSyntax = ast.hasMain || ast.functions.length > 0
-    t1 = hasSyntax ? Math.round(maxT1 * 0.8) : 0
+  switch (runnerStatus) {
+    case 'SUCCESS':
+      if (testResult.totalCount > 0) {
+        const testPassRate = testResult.passCount / testResult.totalCount
+        t1 = Math.round(maxT1 * testPassRate)
+      } else {
+        t1 = (ast.hasMain || ast.functions?.length > 0) ? Math.round(maxT1 * 0.8) : 0
+      }
+      break
+
+    case 'COMPILE_FAILED':
+    case 'RUNTIME_ERROR':
+    case 'RUNNER_TIMEOUT':
+      t1 = 0
+      if (runnerStatus === 'RUNNER_TIMEOUT') {
+        misconceptions.push('Thời gian thực thi vượt quá 2000ms (Timeout)')
+      }
+      break
+
+    case 'RUNNER_DISABLED':
+      t1 = Math.round(maxT1 * 0.50)
+      break
+
+    case 'NO_TEST_CASES':
+    default:
+      t1 = (ast.hasMain || (ast.functions && ast.functions.length > 0)) ? Math.round(maxT1 * 0.8) : 0
+      break
   }
 
   if (hasInfiniteLoop) {
