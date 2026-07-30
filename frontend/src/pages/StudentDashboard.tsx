@@ -124,10 +124,10 @@ function AssignmentModal({ asgn, sub, onClose, onSubmit, onChat, onViewResult })
             </button>
           )}
 
-          {/* Submit / Re-submit only if open */}
+          {/* Submit button */}
           {isOpen && (
             <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', fontSize: '.95rem', padding: '13px', fontWeight: 700 }} onClick={() => { onClose(); onSubmit() }}>
-              {hasSub ? '🔄 Nộp lại' : '🚀 Nộp bài'}
+              🚀 Nộp bài
             </button>
           )}
 
@@ -383,7 +383,7 @@ export default function StudentDashboard() {
                           </div>
                         )}
 
-                        {/* Nộp / Nộp lại (Primary button at top above Xem đề) */}
+                        {/* Nộp bài (Primary button at top above Xem đề) */}
                         <button
                           className={`btn ${isOpen ? 'btn-primary' : 'btn-ghost'} btn-sm`}
                           style={{ whiteSpace: 'nowrap', justifyContent: 'center', fontSize: '.78rem', fontWeight: 700, opacity: isOpen ? 1 : 0.6 }}
@@ -395,7 +395,7 @@ export default function StudentDashboard() {
                             refreshAssignments();
                           }}
                         >
-                          {sub ? '🔄 Nộp lại' : '🚀 Nộp bài'}
+                          🚀 Nộp bài
                         </button>
 
                         {/* Xem đề */}
