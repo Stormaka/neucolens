@@ -94,9 +94,9 @@ export const assignments = {
     return cachedGet(`/assignments/classroom/${classId}${params}`).then(r => r.data ?? r)
   },
   get: (id: number) => cachedGet(`/assignments/${id}`) as Promise<any>,
-  create: (data: any) => API.post('/assignments', data) as Promise<any>,
-  update: (id: number, data: any) => API.patch(`/assignments/${id}`, data) as Promise<any>,
-  setStatus: (id: number, status: string) => API.patch(`/assignments/${id}/status`, { status }) as Promise<any>,
+  create: (data: any) => { clearReadCache(); return API.post('/assignments', data) as Promise<any> },
+  update: (id: number, data: any) => { clearReadCache(); return API.patch(`/assignments/${id}`, data) as Promise<any> },
+  setStatus: (id: number, status: string) => { clearReadCache(); return API.patch(`/assignments/${id}/status`, { status }) as Promise<any> },
   submissions: (id: number) => API.get(`/assignments/${id}/submissions`) as Promise<any[]>,
 }
 
