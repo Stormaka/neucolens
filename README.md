@@ -96,6 +96,18 @@ Tạo bài thi (teacher): `POST /assignments {is_exam:true, duration_minutes:60,
 
 Chạy phân tích sau khi xuất: `pip install pandas numpy scipy statsmodels scikit-learn matplotlib seaborn openpyxl && python research_docs/statistical_analysis.py --data neu-codelens-export.xlsx --output results/` → ra `baseline_equivalence.png`, `rq1_llm_accuracy.png`, `rq3/4/5…` + `research_results_summary.json`.
 
+## B4 Pilot — Chạy thử 4 tuần
+
+Xem `docs/PILOT_GUIDE.md` (timeline W0-W4, checklist, Go/No-Go `κ≥0.61`). Khởi tạo nhanh:
+
+```bash
+DATABASE_PATH=./pilot.db JWT_SECRET=... node backend/scripts/pilot_setup.js --class=PILOT-2026 --students=15
+# SV: pilot01@neu.edu.vn … pilot15@neu.edu.vn / Pilot123!Aa  — 3 bài pilot, deadline +7d
+# Sau đó: Admin → Research → Tải JSON → node backend/scripts/json_to_excel.js pilot.json pilot.xlsx
+```
+
+Log vận hành + survey mẫu: `research_docs/pilot_log.md`.
+
 ## API tóm tắt
 
 | Method | Path | Auth | Mô tả |
