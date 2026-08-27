@@ -242,6 +242,9 @@ function runMigrations() {
       CREATE INDEX IF NOT EXISTS idx_exam_sessions_student ON exam_sessions(student_id);
       CREATE INDEX IF NOT EXISTS idx_exam_sessions_assignment ON exam_sessions(assignment_id);
       CREATE INDEX IF NOT EXISTS idx_assignments_is_exam ON assignments(is_exam);
+      CREATE INDEX IF NOT EXISTS idx_assignments_classroom ON assignments(classroom_id);
+      CREATE INDEX IF NOT EXISTS idx_classrooms_lecturer ON classrooms(lecturer_id);
+      CREATE INDEX IF NOT EXISTS idx_submissions_asgn_student ON submissions(assignment_id, student_id);
     `)
   } catch (e) {
     console.error('⚠️ submission_events index error:', e.message)

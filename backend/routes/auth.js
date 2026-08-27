@@ -144,7 +144,6 @@ export function requireRole(role) {
  */
 export async function verifyClassroomAccess(req, res, next) {
   try {
-    // getDb được export từ database.js — dùng dynamic require để tránh circular
     const { getDb } = await Promise.resolve().then(() => import('../db/database.js'))
     const db = getDb()
     const cid = req.params.classroomId || req.params.id || req.body?.classroom_id
@@ -153,13 +152,16 @@ export async function verifyClassroomAccess(req, res, next) {
     const user = req.user
     if (user.role === 'teacher') {
       const cls = db.prepare('SELECT id FROM classrooms WHERE id=? AND lecturer_id=?').get(cid, user.id)
-      if (!cls) return res.status(403).json({ error: 'Bạn không có quyền truy cập lớp này' })
+      if (!cls) return res.status(403).json({ error: 'Bạn không có quyền truy cập lớp này', code: 'FORBIDDEN_CLASSROOM' })
     } else {
       const enrolled = db.prepare('SELECT id FROM enrollments WHERE classroom_id=? AND student_id=?').get(cid, user.id)
-      if (!enrolled) return res.status(403).json({ error: 'Bạn chưa được ghi danh vào lớp này' })
+      if (!enrolled) return res.status(403).json({ error: 'Bạn chưa được ghi danh vào lớp này', code: 'NOT_ENROLLED' })
     }
     next()
-  } catch { next() }
+  } catch (e) {
+    console.error('verifyClassroomAccess error:', e.message)
+    return res.status(500).json({ error: 'Lỗi phân quyền lớp học', code: 'CLASSROOM_AUTH_ERROR' })
+  }
 }
 
 export default router

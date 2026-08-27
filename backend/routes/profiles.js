@@ -1,6 +1,6 @@
 import express from 'express'
 import { getDb } from '../db/database.js'
-import { authenticate } from './auth.js'
+import { authenticate, requireRole } from './auth.js'
 
 const router = express.Router()
 
@@ -53,10 +53,16 @@ router.get('/me', authenticate, (req, res) => {
   })
 })
 
-// GET /api/profiles/:studentId/classroom/:classId — hồ sơ SV (teacher view)
+// GET /api/profiles/:studentId/classroom/:classId — hồ sơ SV (teacher view, hoặc SV xem chính mình)
 router.get('/:studentId/classroom/:classId', authenticate, (req, res) => {
   const db = getDb()
-  const profile = db.prepare('SELECT * FROM student_profiles WHERE student_id=? AND classroom_id=?').get(req.params.studentId, req.params.classId)
+  const sid = Number(req.params.studentId), cid = Number(req.params.classId)
+  if (req.user.role === 'student' && req.user.id !== sid) return res.status(403).json({ error: 'Chỉ được xem hồ sơ của chính mình', code: 'FORBIDDEN_PROFILE' })
+  if (req.user.role === 'teacher') {
+    const owns = db.prepare('SELECT 1 FROM classrooms WHERE id=? AND lecturer_id=?').get(cid, req.user.id)
+    if (!owns) return res.status(403).json({ error: 'Không có quyền với lớp này', code: 'FORBIDDEN_CLASSROOM' })
+  }
+  const profile = db.prepare('SELECT * FROM student_profiles WHERE student_id=? AND classroom_id=?').get(sid, cid)
   if (!profile) return res.status(404).json({ error: 'Chưa có hồ sơ' })
 
   const user = db.prepare('SELECT id,name,email,mssv FROM users WHERE id=?').get(req.params.studentId)
@@ -81,10 +87,11 @@ router.get('/:studentId/classroom/:classId', authenticate, (req, res) => {
   })
 })
 
-// GET /api/profiles/classroom/:classId/ews — Early Warning System data
-// Phase 1: bổ sung process signals (Jadud EQ-lite, paste-ratio, keystroke latency)
-router.get('/classroom/:classId/ews', authenticate, (req, res) => {
+// GET /api/profiles/classroom/:classId/ews — Early Warning System data (teacher only)
+router.get('/classroom/:classId/ews', authenticate, requireRole('teacher'), (req, res) => {
   const db = getDb()
+  const owns = db.prepare('SELECT 1 FROM classrooms WHERE id=? AND lecturer_id=?').get(req.params.classId, req.user.id)
+  if (!owns) return res.status(403).json({ error: 'Không có quyền với lớp này', code: 'FORBIDDEN_CLASSROOM' })
   const atRisk = db.prepare(`
     SELECT u.id,u.name,u.mssv,sp.overall_score,sp.risk_score,sp.trend,sp.misconceptions_json
     FROM student_profiles sp JOIN users u ON sp.student_id=u.id

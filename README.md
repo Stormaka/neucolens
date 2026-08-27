@@ -96,6 +96,21 @@ Tạo bài thi (teacher): `POST /assignments {is_exam:true, duration_minutes:60,
 
 Chạy phân tích sau khi xuất: `pip install pandas numpy scipy statsmodels scikit-learn matplotlib seaborn openpyxl && python research_docs/statistical_analysis.py --data neu-codelens-export.xlsx --output results/` → ra `baseline_equivalence.png`, `rq1_llm_accuracy.png`, `rq3/4/5…` + `research_results_summary.json`.
 
+## API tóm tắt
+
+| Method | Path | Auth | Mô tả |
+|--------|------|------|-------|
+| POST | `/auth/login` | — | Đăng nhập, trả `access_token` (30m) + `refresh_token` |
+| POST | `/auth/refresh` | — | Xoay refresh token |
+| GET | `/assignments/classroom/:id` | teacher/student | List bài + `avgScore`, `sample_test_cases` (SV chỉ thấy `!hidden`) |
+| POST | `/assignments` | teacher | Tạo bài, hỗ trợ `is_exam/duration/allow_paste/require_fullscreen/shuffle/hide_scores_until` |
+| POST | `/submissions` | student | Nộp code, trả `202 pending` → poll `GET /submissions/:id`, enforce exam single-attempt + hide scores |
+| POST | `/submissions/exam/start` | student | Bắt đầu thi, trả `expires_at` |
+| GET | `/admin/research/export?format=json|csv|excel` | teacher | Xuất 4 sheets ẩn danh |
+| GET | `/assignments/:id/plagiarism?threshold=0.8` | teacher | Jaccard 5-gram pairs |
+
+`POST /submissions` trả `202` khi `Vercel=false` (poll 40×500ms), `201` khi serverless (đã chấm xong). Lỗi chuẩn `{success:false, error:{code, message}, status}`.
+
 ## Ghi chú triển khai
 
-SQLite trên Vercel không phải kho lưu trữ bền vững. Khi triển khai thật, dùng volume bền vững trên VM/Render hoặc chuyển database sang PostgreSQL. Việc chạy code C++ của sinh viên phải nằm trong dịch vụ sandbox chuyên dụng; production mặc định tắt trình chạy native.
+SQLite trên Vercel không phải kho lưu trữ bền vững (`/tmp` ephemeral). Khi triển khai thật, dùng volume bền vững trên VM/Render (`DATABASE_PATH=/var/data/skillslab.db`) hoặc chuyển sang PostgreSQL. `render.yaml` đã có `disk` + `healthCheckPath: /api/health`. Việc chạy code C++ phải nằm trong sandbox cô lập; production `ENABLE_LOCAL_RUNNER=false`.

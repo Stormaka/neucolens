@@ -1,16 +1,16 @@
 import express from 'express'
 import { getDb } from '../db/database.js'
-import { authenticate } from './auth.js'
+import { authenticate, requireRole } from './auth.js'
 
 const router = express.Router()
 
 // GET /api/misconceptions/classroom/:classId
-// — Thống kê ngộ nhận theo lớp (cho giảng viên)
-router.get('/classroom/:classId', authenticate, (req, res) => {
-  if (req.user.role !== 'teacher') return res.status(403).json({ error: 'Chỉ giảng viên' })
-
+// — Thống kê ngộ nhận theo lớp (cho giảng viên) — teacher phải sở hữu lớp
+router.get('/classroom/:classId', authenticate, requireRole('teacher'), (req, res) => {
   const db = getDb()
   const { classId } = req.params
+  const owns = db.prepare('SELECT 1 FROM classrooms WHERE id=? AND lecturer_id=?').get(classId, req.user.id)
+  if (!owns) return res.status(403).json({ error: 'Bạn không có quyền xem lớp này', code: 'FORBIDDEN_CLASSROOM' })
 
   // Tổng hợp theo concept
   const stats = db.prepare(`
@@ -70,14 +70,16 @@ router.get('/student/:studentId', authenticate, (req, res) => {
   res.json(list)
 })
 
-// POST /api/misconceptions — thêm ngộ nhận mới
-router.post('/', authenticate, (req, res) => {
+// POST /api/misconceptions — thêm ngộ nhận mới (teacher only)
+router.post('/', authenticate, requireRole('teacher'), (req, res) => {
   const db = getDb()
   const { student_id, assignment_id, classroom_id, concept, description } = req.body
 
   if (!student_id || !assignment_id || !classroom_id || !concept) {
     return res.status(400).json({ error: 'Thiếu thông tin bắt buộc' })
   }
+  const owns = db.prepare('SELECT 1 FROM classrooms WHERE id=? AND lecturer_id=?').get(classroom_id, req.user.id)
+  if (!owns) return res.status(403).json({ error: 'Không có quyền với lớp này', code: 'FORBIDDEN_CLASSROOM' })
 
   const result = db.prepare(
     'INSERT INTO misconceptions (student_id, assignment_id, classroom_id, concept, description) VALUES (?,?,?,?,?)'

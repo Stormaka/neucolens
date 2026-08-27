@@ -23,6 +23,21 @@ const toSnakeCase = value => {
 
 // ── Security: hide server fingerprint ───────────────────────────────────────
 app.disable('x-powered-by') // #27: don't disclose Express version
+app.set('trust proxy', 1)
+ // Global rate-limit: 300 req / 15 min / IP (in-memory, resets on restart; for prod use Redis)
+const _globalRate = new Map()
+app.use((req, res, next) => {
+  const ip = (req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim()) || req.ip || 'unknown'
+  const now = Date.now(), win = 15 * 60 * 1000, max = 300
+  const e = _globalRate.get(ip) || { count: 0, start: now }
+  if (now - e.start > win) { e.count = 1; e.start = now } else e.count += 1
+  _globalRate.set(ip, e)
+  if (_globalRate.size > 5000) {
+    for (const [k, v] of _globalRate) if (now - v.start > win) _globalRate.delete(k)
+  }
+  if (e.count > max) return res.status(429).json({ error: 'Too many requests', code: 'GLOBAL_RATE_LIMITED', status: 429 })
+  next()
+})
 
 const ALLOWED_ORIGINS = [
   'http://localhost:5173',

@@ -14,6 +14,7 @@ export default defineConfig({
   },
   // #24: Code splitting — split vendor bundles for better caching
   build: {
+    chunkSizeWarningLimit: 500,
     rollupOptions: {
       output: {
         manualChunks: {

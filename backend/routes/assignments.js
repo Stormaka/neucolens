@@ -133,8 +133,12 @@ router.post('/', authenticate, requireRole('teacher'), verifyClassroomAccess, (r
     duration = parseInt(duration_minutes)
     if (!duration || duration < 5 || duration > 300) return res.status(400).json({ error: 'duration_minutes phải 5–300 phút cho bài thi' })
   }
-  const hideUntil = hide_scores_until ? new Date(hide_scores_until).toISOString() : null
-  if (hide_scores_until && !hideUntil) return res.status(400).json({ error: 'hide_scores_until không hợp lệ (ISO datetime)' })
+  let hideUntil = null
+  if (hide_scores_until) {
+    const t = Date.parse(hide_scores_until)
+    if (Number.isNaN(t)) return res.status(400).json({ error: 'hide_scores_until không hợp lệ (ISO datetime)' })
+    hideUntil = new Date(t).toISOString()
+  }
 
   // Validate test_cases format nếu có
   const testCasesArr = Array.isArray(test_cases) ? test_cases.map(tc => ({
@@ -196,8 +200,12 @@ router.patch('/:id', authenticate, requireRole('teacher'), verifyAssignmentAcces
   if (require_fullscreen !== undefined) { updates.push('require_fullscreen=?'); vals.push(require_fullscreen ? 1 : 0) }
   if (shuffle_questions !== undefined) { updates.push('shuffle_questions=?'); vals.push(shuffle_questions ? 1 : 0) }
   if (hide_scores_until !== undefined) {
-    const v = hide_scores_until ? new Date(hide_scores_until).toISOString() : null
-    if (hide_scores_until && !v) return res.status(400).json({ error: 'hide_scores_until không hợp lệ' })
+    let v = null
+    if (hide_scores_until) {
+      const t = Date.parse(hide_scores_until)
+      if (Number.isNaN(t)) return res.status(400).json({ error: 'hide_scores_until không hợp lệ' })
+      v = new Date(t).toISOString()
+    }
     updates.push('hide_scores_until=?'); vals.push(v)
   }
   if (!updates.length) return res.status(400).json({ error: 'Không có gì cập nhật' })

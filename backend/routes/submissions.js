@@ -181,6 +181,8 @@ router.post('/exam/:assignmentId/event', authenticate, requireRole('student'), (
   const sess = db.prepare('SELECT id FROM exam_sessions WHERE student_id=? AND assignment_id=?').get(req.user.id, req.params.assignmentId)
   if (!sess) return res.status(404).json({ error: 'Chưa bắt đầu thi', code: 'NOT_STARTED' })
   const col = type === 'focus_lost' ? 'focus_lost_count' : type === 'paste_blocked' ? 'paste_blocked_count' : 'fullscreen_exits'
+  const allowedCols = ['focus_lost_count', 'paste_blocked_count', 'fullscreen_exits']
+  if (!allowedCols.includes(col)) return res.status(400).json({ error: 'Cột không hợp lệ', code: 'INVALID_COL' })
   db.prepare(`UPDATE exam_sessions SET ${col}=${col}+1 WHERE id=?`).run(sess.id)
   res.json({ success: true })
 })

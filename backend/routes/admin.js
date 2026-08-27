@@ -22,8 +22,9 @@ router.get('/users', (req, res) => {
     params.push(role)
   }
   if (search) {
-    query += ' AND (name LIKE ? OR email LIKE ? OR mssv LIKE ?)'
-    const like = `%${search}%`
+    const esc = String(search).replace(/[%_\\]/g, '\\$&')
+    query += ' AND (name LIKE ? ESCAPE \'\\\' OR email LIKE ? ESCAPE \'\\\' OR mssv LIKE ? ESCAPE \'\\\')'
+    const like = `%${esc}%`
     params.push(like, like, like)
   }
   query += ' ORDER BY role, name'
@@ -32,16 +33,19 @@ router.get('/users', (req, res) => {
 })
 
 // POST /api/admin/users — create a new user
+const strongPassword = pw => typeof pw === 'string' && pw.length >= 12 && /[a-z]/.test(pw) && /[A-Z]/.test(pw) && /\d/.test(pw) && /[^A-Za-z0-9]/.test(pw)
+const isValidEmail = e => typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)
 router.post('/users', (req, res) => {
   const { email, password, name, role, mssv } = req.body
   if (!email || !password || !name || !role) {
     return res.status(400).json({ error: 'Thiếu thông tin bắt buộc (email, password, name, role)' })
   }
+  if (!isValidEmail(email)) return res.status(400).json({ error: 'Email không hợp lệ', code: 'INVALID_EMAIL' })
   if (!['teacher', 'student'].includes(role)) {
     return res.status(400).json({ error: 'Vai trò không hợp lệ. Chỉ chấp nhận: teacher, student' })
   }
-  if (password.length < 6) {
-    return res.status(400).json({ error: 'Mật khẩu phải có ít nhất 6 ký tự' })
+  if (!strongPassword(password)) {
+    return res.status(400).json({ error: 'Mật khẩu phải có ít nhất 12 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt', code: 'WEAK_PASSWORD' })
   }
   const db = getDb()
   const existing = db.prepare('SELECT id FROM users WHERE email=?').get(email)

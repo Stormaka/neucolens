@@ -30,6 +30,7 @@ Thumbs.db
 # Environment variables and secrets
 .env
 *.env
+!.env.example
 .env.local
 .env.development.local
 .env.test.local
@@ -43,5 +44,12 @@ Thumbs.db
 # Vercel
 .vercel
 
-.vercel
-.env*
+# Dev/debug scripts (never commit)
+backend/check_db.js
+backend/debug_loops.js
+backend/tests/debug_*.mjs
+backend/tests/debug_*.js
+
+# Research results (generated)
+results/
+coverage/
