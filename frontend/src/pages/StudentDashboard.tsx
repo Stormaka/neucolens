@@ -1,10 +1,15 @@
 // @ts-nocheck
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import CodeMirror from '@uiw/react-codemirror'
+import { cpp } from '@codemirror/lang-cpp'
+import { oneDark } from '@codemirror/theme-one-dark'
 import { useAuth } from '../AuthContext'
 import { classrooms, assignments, submissions, profiles } from '../api'
 import { RadarChart, scoreColor, PROFILE_BADGE, STATUS_BADGE, Loader, useToast, fmtDate, CodeBlock, CON_LBL, CON_EM } from '../components/ui'
 import CodeGraph from '../components/CodeGraph'
+import ExamPanel from '../components/ExamPanel'
+import { useProcessTelemetry } from '../lib/processTelemetry'
 
 const PIPE_STEPS = [
   { i: '📨', n: 'Nhận bài nộp', d: 'Xác thực file code, kiểm tra định dạng' },
@@ -21,6 +26,9 @@ function AssignmentModal({ asgn, sub, onClose, onSubmit, onChat, onViewResult })
   const isOpen = asgn.status === 'open'
   const hasSub = !!sub
   const sb = sub ? (STATUS_BADGE[sub.status] || STATUS_BADGE.pending) : null
+  const isExam = !!(asgn.isExam ?? asgn.is_exam)
+  const hideUntil = asgn.hideScoresUntil || asgn.hide_scores_until
+  const duration = asgn.durationMinutes ?? asgn.duration_minutes
 
   return (
     <div style={{
@@ -50,7 +58,12 @@ function AssignmentModal({ asgn, sub, onClose, onSubmit, onChat, onViewResult })
           <div>
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
               <span className={`badge ${isOpen ? 'bdr' : 'bdn'}`}>{isOpen ? '🟢 Đang mở' : '⚫ Đã đóng'}</span>
-              {sb && <span className={`badge ${sb.c}`}>{sb.i} {sb.l}</span>}
+              {isExam && <span className="badge bdy">📝 Thi {duration ? `${duration}'` : ''}</span>}
+              {isExam && hideUntil && <span className="badge bdo">🔒 Giấu điểm</span>}
+              {isExam && !(asgn.allowPaste ?? asgn.allow_paste) && <span className="badge bdn" style={{ fontSize: '.58rem' }}>🚫 Chặn paste</span>}
+              {isExam && (asgn.requireFullscreen ?? asgn.require_fullscreen) && <span className="badge bdn" style={{ fontSize: '.58rem' }}>⛶ Fullscreen</span>}
+              {sb && !(isExam && sub?.scoresHidden) && <span className={`badge ${sb.c}`}>{sb.i} {sb.l}</span>}
+              {sub?.scoresHidden && <span className="badge bdo">🔒 Chờ công bố</span>}
               {sub?.ai_suspicion_flag ? <span className="badge bdy">🤖 AI Warning</span> : null}
             </div>
             <div style={{ fontWeight: 800, fontSize: '1.05rem', fontFamily: 'var(--display)', lineHeight: 1.35 }}>{asgn.title}</div>
@@ -92,6 +105,12 @@ function AssignmentModal({ asgn, sub, onClose, onSubmit, onChat, onViewResult })
 
           {/* Latest result summary */}
           {sub && (
+            sub.scoresHidden ? (
+              <div style={{ background: 'rgba(251,191,36,.08)', border: '1px solid rgba(251,191,36,.25)', borderRadius: 'var(--r12)', padding: '14px 16px', textAlign: 'center' }}>
+                <div style={{ fontWeight: 700, color: 'var(--or)', marginBottom: '6px' }}>🔒 Bài thi đã nộp — điểm đang được giấu</div>
+                <div style={{ fontSize: '.8rem', color: 'var(--t2)' }}>Giáo viên sẽ công bố điểm sau khi hết thời gian thi{hideUntil ? ` (${fmtDate(hideUntil)})` : ''}. Bạn chỉ được nộp 1 lần duy nhất.</div>
+              </div>
+            ) : (
             <div style={{
               background: sub.status === 'passed' ? 'rgba(16,185,129,.08)' : sub.status === 'failed' ? 'rgba(229,62,62,.08)' : 'rgba(251,191,36,.08)',
               border: `1px solid ${sub.status === 'passed' ? 'rgba(52,211,153,.3)' : sub.status === 'failed' ? 'rgba(248,113,113,.3)' : 'rgba(251,191,36,.3)'}`,
@@ -107,6 +126,7 @@ function AssignmentModal({ asgn, sub, onClose, onSubmit, onChat, onViewResult })
                 </div>
               )}
             </div>
+            )
           )}
         </div>
 
@@ -161,6 +181,26 @@ export default function StudentDashboard() {
   const [loading, setLoading] = useState(true)
   const [classId, setClassId] = useState<number | null>(null)
   const [modalAsgn, setModalAsgn] = useState<any>(null)
+  const [examSession, setExamSession] = useState<any>(null)
+  const [examLoading, setExamLoading] = useState(false)
+  const editorDomRef = useRef<HTMLElement | null>(null)
+
+  // Phase 1: telemetry quá trình làm bài — reset phiên mỗi khi đổi bài tập
+  const telemetry = useProcessTelemetry(selAsgn?.id ?? null)
+
+  // Gắn lại listener vào editor DOM khi phiên telemetry được tái tạo
+  useEffect(() => {
+    if (editorDomRef.current) telemetry.attachEditor(editorDomRef.current)
+    return () => telemetry.detachEditor()
+  }, [telemetry])
+
+  // Phase 3: khi chọn bài thi, tải phiên exam hiện tại
+  const isSelExam = !!(selAsgn?.isExam ?? selAsgn?.is_exam)
+  useEffect(() => {
+    if (!selAsgn || !isSelExam) { setExamSession(null); return }
+    setExamLoading(true)
+    submissions.examSession(selAsgn.id).then(s => setExamSession(s)).catch(() => setExamSession(null)).finally(() => setExamLoading(false))
+  }, [selAsgn?.id, isSelExam])
 
   useEffect(() => { loadData() }, [])
 
@@ -194,6 +234,19 @@ export default function StudentDashboard() {
     } catch {}
   }
 
+  async function startExam() {
+    if (!selAsgn) return
+    setExamLoading(true)
+    try {
+      const sess = await submissions.startExam(selAsgn.id)
+      setExamSession(sess)
+      toast('✅ Đã bắt đầu thi — đồng hồ đang chạy!')
+      // đảm bảo assignment được refresh để hiện badge thi
+      refreshAssignments()
+    } catch (e: any) { toast(e.message || 'Không thể bắt đầu thi', true) }
+    finally { setExamLoading(false) }
+  }
+
   async function submit() {
     if (!selAsgn || !code.trim()) { toast('Vui lòng chọn bài tập và nhập code', true); return }
     
@@ -218,7 +271,38 @@ export default function StudentDashboard() {
     setSubmitting(true); setSubResult(null)
     setPipeState(PIPE_STEPS.map(() => 'idle'))
     try {
-      const res = await submissions.submit(targetAsgn.id, code)
+      // Phase 1: gửi kèm dữ liệu quá trình làm bài (keystroke/paste/idle)
+      telemetry.recordSubmitAttempt()
+      const isExam = !!(targetAsgn.isExam ?? targetAsgn.is_exam)
+      const examSid = examSession?.sessionId || examSession?.session_id || examSession?.session_id
+      let res = await submissions.submit(targetAsgn.id, code, {
+        session_id: (isExam && examSid) ? examSid : telemetry.sessionId,
+        process_events: telemetry.drain(),
+      })
+      // Phase 3: bài thi giấu điểm → không poll chi tiết, báo đã nộp
+      if (res?.scoresHidden || res?.scores_hidden) {
+        setPipeState(PIPE_STEPS.map(() => 'done'))
+        setSubResult(res)
+        toast('📝 Đã nộp bài thi — điểm sẽ công bố sau!')
+        setExamSession((s: any) => s ? { ...s, submittedAt: new Date().toISOString() } : s)
+        try { const subs = await submissions.me(targetAsgn.id); setMySubs(prev => ({ ...prev, [targetAsgn.id]: subs?.[0] })) } catch {}
+        return
+      }
+      // Local/self-host trả 202 pending → poll tới khi chấm xong để hiển thị kết quả
+      if (res?.status === 'pending' && res?.id) {
+        for (let i = 0; i < 40; i++) {
+          await new Promise(r => setTimeout(r, 500))
+          const cur: any = await submissions.poll(res.id)
+          if (cur && cur.status !== 'pending') { res = cur; break }
+        }
+        // Nếu poll trả về hidden (thi) thì strip
+        if (res?.scoresHidden || res?.scores_hidden) {
+          setPipeState(PIPE_STEPS.map(() => 'done'))
+          setSubResult(res)
+          toast('📝 Đã nộp bài thi — điểm sẽ công bố sau!')
+          return
+        }
+      }
       setPipeState(PIPE_STEPS.map(() => 'done'))
       setSubResult(res)
       toast('Phân tích hoàn tất!')
@@ -226,7 +310,12 @@ export default function StudentDashboard() {
       setMySubs(prev => ({ ...prev, [targetAsgn.id]: subs?.[0] }))
       const prof = await profiles.me(classId || undefined)
       setMyProfile(prof)
-    } catch (e: any) { toast(e.message || 'Lỗi nộp bài', true) }
+    } catch (e: any) {
+      if (e.code === 'EXAM_NOT_STARTED') toast('Bạn phải bấm “Bắt đầu làm bài” trước', true)
+      else if (e.code === 'EXAM_EXPIRED') toast('Đã hết thời gian thi', true)
+      else if (e.code === 'EXAM_ALREADY_SUBMITTED') toast('Bài thi chỉ được nộp 1 lần', true)
+      else toast(e.message || 'Lỗi nộp bài', true)
+    }
     finally { setSubmitting(false) }
   }
 
@@ -327,9 +416,13 @@ export default function StudentDashboard() {
               </div>
               {asgns.map((a) => {
                 const sub = mySubs[a.id]
-                const sb = sub ? (STATUS_BADGE[sub.status] || STATUS_BADGE.pending) : null
+                const isExam = !!(a.isExam ?? a.is_exam)
+                const hidden = !!(sub?.scoresHidden ?? sub?.scores_hidden)
+                const sb = sub && !hidden ? (STATUS_BADGE[sub.status] || STATUS_BADGE.pending) : null
                 const isOpen = a.status === 'open'
-                const scoreDisplay = sub && sub.score_total !== null && sub.score_total !== undefined ? `${sub.score_total}/100` : 'Chưa chấm T1'
+                const scoreDisplay = hidden ? '🔒 Chờ công bố' : sub && sub.score_total !== null && sub.score_total !== undefined ? `${sub.score_total}/100` : 'Chưa chấm T1'
+                const duration = a.durationMinutes ?? a.duration_minutes
+                const canSubmitExam = isExam ? !sub : true // thi chỉ 1 lần
 
                 return (
                   <div key={a.id} className="card card-sm" style={{
@@ -342,7 +435,9 @@ export default function StudentDashboard() {
                         {/* Badges row */}
                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '7px' }}>
                           <span className={`badge ${isOpen ? 'bdr' : 'bdn'}`}>{isOpen ? '🟢 Đang mở' : '⚫ Đã đóng'}</span>
-                          {sb
+                          {isExam && <span className="badge bdy">📝 Thi{duration ? ` ${duration}'` : ''}</span>}
+                          {isExam && (a.hideScoresUntil || a.hide_scores_until) && <span className="badge bdo">🔒 Giấu điểm</span>}
+                          {hidden ? <span className="badge bdo">🔒 Chờ công bố</span> : sb
                             ? <span className={`badge ${sb.c}`}>{sb.i} {sb.l}</span>
                             : <span className="badge bdn" style={{ opacity: .7 }}>📭 Chưa nộp</span>
                           }
@@ -363,7 +458,7 @@ export default function StudentDashboard() {
                       {/* Action buttons column */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', flexShrink: 0, alignItems: 'stretch', minWidth: '100px' }}>
                         {/* Score circle */}
-                        {sub && (
+                        {sub && !hidden && (
                           <div style={{
                             width: '54px', height: '54px',
                             borderRadius: '50%',
@@ -382,8 +477,16 @@ export default function StudentDashboard() {
                             </div>
                           </div>
                         )}
+                        {hidden && (
+                          <div style={{ width: '54px', height: '54px', borderRadius: '50%', background: 'rgba(251,191,36,.15)', border: '1px dashed var(--or)', display: 'flex', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', fontSize: '.62rem', color: 'var(--or)', textAlign: 'center', lineHeight: 1.2 }}>🔒<br/>Chờ</div>
+                        )}
 
-                        {/* Nộp bài (Primary button at top above Xem đề) */}
+                        {/* Nộp bài / Vào thi */}
+                        {isExam && sub ? (
+                          <button className="btn btn-ghost btn-sm" disabled style={{ opacity: .5, whiteSpace: 'nowrap', justifyContent: 'center', fontSize: '.76rem' }}>
+                            ✅ Đã nộp (1 lần)
+                          </button>
+                        ) : (
                         <button
                           className={`btn ${isOpen ? 'btn-primary' : 'btn-ghost'} btn-sm`}
                           style={{ whiteSpace: 'nowrap', justifyContent: 'center', fontSize: '.78rem', fontWeight: 700, opacity: isOpen ? 1 : 0.6 }}
@@ -395,8 +498,9 @@ export default function StudentDashboard() {
                             refreshAssignments();
                           }}
                         >
-                          🚀 Nộp bài
+                          {isExam ? '📝 Vào thi' : '🚀 Nộp bài'}
                         </button>
+                        )}
 
                         {/* Xem đề */}
                         <button
@@ -407,7 +511,8 @@ export default function StudentDashboard() {
                           📄 Xem đề
                         </button>
 
-                        {/* Chat AI */}
+                        {/* Chat AI — ẩn trong thi nếu yêu cầu giám sát */}
+                        {!isExam && (
                         <button
                           className="btn btn-ghost btn-sm"
                           style={{ whiteSpace: 'nowrap', justifyContent: 'center', fontSize: '.76rem' }}
@@ -415,9 +520,10 @@ export default function StudentDashboard() {
                         >
                           💬 Hỏi AI
                         </button>
+                        )}
 
                         {/* Xem kết quả (if has submission) */}
-                        {sub && (
+                        {sub && !hidden && (
                           <button
                             className="btn btn-ghost btn-sm"
                             style={{ whiteSpace: 'nowrap', justifyContent: 'center', fontSize: '.76rem' }}
@@ -425,6 +531,9 @@ export default function StudentDashboard() {
                           >
                             📊 Kết quả
                           </button>
+                        )}
+                        {hidden && (
+                          <div style={{ fontSize: '.68rem', color: 'var(--t3)', textAlign: 'center', padding: '4px', background: 'var(--bg3)', borderRadius: '6px' }}>🔒 Điểm sẽ công bố sau</div>
                         )}
                       </div>
                     </div>
@@ -479,7 +588,49 @@ export default function StudentDashboard() {
               {selAsgn && <span className="badge bdp" style={{ fontSize: '.78rem' }}>📌 Bài đang nộp: {selAsgn.title}</span>}
             </div>
 
-            {/* Top row: selector + code editor side by side */}
+            {/* Phase 3: Exam vs Normal editor branching */}
+            {isSelExam ? (
+              <div className="card">
+                {examLoading ? (
+                  <div style={{ textAlign: 'center', padding: '40px', color: 'var(--t3)' }}>⏳ Đang tải phiên thi...</div>
+                ) : !examSession ? (
+                  <div style={{ textAlign: 'center', padding: '28px' }}>
+                    <div style={{ fontSize: '2.4rem', marginBottom: '10px' }}>📝</div>
+                    <div style={{ fontWeight: 800, fontSize: '1.15rem', fontFamily: 'var(--display)', marginBottom: '8px' }}>{selAsgn?.title} — Chế độ Thi</div>
+                    <div style={{ fontSize: '.82rem', color: 'var(--t2)', lineHeight: 1.7, maxWidth: '520px', margin: '0 auto 16px' }}>
+                      Bài thi <b>{selAsgn?.durationMinutes ?? selAsgn?.duration_minutes ?? 60} phút</b> • Chỉ <b>1 lần nộp duy nhất</b> • Hết giờ tự động nộp<br/>
+                      {(selAsgn?.allowPaste ?? selAsgn?.allow_paste) ? 'Cho phép dán' : '🚫 Chặn dán code'} • {(selAsgn?.requireFullscreen ?? selAsgn?.require_fullscreen) ? '⛶ Yêu cầu fullscreen (thoát sẽ bị ghi nhận)' : 'Không yêu cầu fullscreen'} • {(selAsgn?.shuffleQuestions ?? selAsgn?.shuffle_questions) ? '🔀 Đề đã trộn' : 'Đề cố định'}<br/>
+                      <span style={{ color: 'var(--or)' }}>🔒 Điểm sẽ bị giấu tới {fmtDate(selAsgn?.hideScoresUntil || selAsgn?.hide_scores_until) || 'khi GV công bố'}</span>
+                    </div>
+                    <div style={{ background: 'var(--bg3)', border: '1px solid var(--b1)', borderRadius: 'var(--r10)', padding: '12px', textAlign: 'left', maxWidth: '520px', margin: '0 auto 16px', fontSize: '.78rem', lineHeight: 1.6 }}>
+                      <div style={{ fontWeight: 700, marginBottom: '6px' }}>📌 Quy chế thi:</div>
+                      • Đồng hồ bắt đầu ngay khi bấm “Bắt đầu làm bài” — không thể tạm dừng<br/>
+                      • Không được nộp lại; kiểm tra kỹ trước khi bấm Nộp<br/>
+                      • Hệ thống ghi nhận: số lần dán bị chặn, thoát fullscreen, rời tab — hiển thị cho giảng viên<br/>
+                      • Nút Hỏi AI bị tắt trong khi thi
+                    </div>
+                    <button className="btn btn-primary" style={{ padding: '14px 28px', fontSize: '1rem', fontWeight: 800 }} onClick={startExam} disabled={!selAsgn || selAsgn.status === 'closed'}>
+                      ▶️ Bắt đầu làm bài — {selAsgn?.durationMinutes ?? selAsgn?.duration_minutes ?? 60} phút
+                    </button>
+                    {selAsgn?.status === 'closed' && <div style={{ marginTop: '10px', color: '#f87171', fontSize: '.82rem' }}>🔒 Bài thi đã đóng</div>}
+                  </div>
+                ) : mySubs[selAsgn.id]?.scoresHidden ? (
+                  <div style={{ textAlign: 'center', padding: '40px' }}>
+                    <div style={{ fontSize: '2.2rem', marginBottom: '10px' }}>🔒</div>
+                    <div style={{ fontWeight: 800, fontSize: '1.05rem', fontFamily: 'var(--display)', marginBottom: '8px' }}>Đã nộp bài thi</div>
+                    <div style={{ fontSize: '.82rem', color: 'var(--t2)' }}>Điểm đang được giấu tới {fmtDate(selAsgn?.hideScoresUntil || selAsgn?.hide_scores_until)}. Giảng viên sẽ công bố sau khi hết giờ thi.</div>
+                    <div style={{ marginTop: '14px', fontSize: '.74rem', color: 'var(--t3)' }}>Phiên thi: {(examSession.sessionId || examSession.session_id || '').slice(0, 8)}… • Nộp lúc {new Date(examSession.submittedAt || examSession.submitted_at || Date.now()).toLocaleString('vi-VN')}</div>
+                  </div>
+                ) : mySubs[selAsgn.id] ? (
+                  <div style={{ textAlign: 'center', padding: '28px' }}>
+                    <div style={{ fontWeight: 700, marginBottom: '8px' }}>✅ Bạn đã nộp bài thi này (chỉ 1 lần). Chuyển sang tab “Bài tập” để xem điểm khi được công bố.</div>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setActiveTab('asgn')}>← Về danh sách</button>
+                  </div>
+                ) : (
+                  <ExamPanel assignment={selAsgn} session={examSession} code={code} setCode={setCode} onSubmit={submit} submitting={submitting} telemetry={telemetry} toast={toast} />
+                )}
+              </div>
+            ) : (
             <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '18px', alignItems: 'start' }} className="g2">
               {/* Assignment selector */}
               <div className="card">
@@ -524,19 +675,38 @@ export default function StudentDashboard() {
                 )}
               </div>
 
-              {/* Code editor */}
+              {/* Code editor — CodeMirror 6 + process telemetry (Phase 1) */}
               <div className="card">
                 <div style={{ fontWeight: 700, fontSize: '.88rem', marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span>💻 Viết hoặc dán Code</span>
                   {selAsgn && <span className="badge bdn" style={{ fontSize: '.65rem' }}>{selAsgn.lang || 'C++'}</span>}
                 </div>
-                <textarea
-                  className="input"
-                  style={{ fontFamily: 'var(--mono)', fontSize: '.82rem', minHeight: '320px', lineHeight: 1.8, background: 'var(--bg0)', borderColor: 'var(--b1)' }}
-                  placeholder={'#include <iostream>\nusing namespace std;\n\nint main() {\n    // Viết code tại đây...\n    return 0;\n}'}
-                  value={code}
-                  onChange={e => setCode(e.target.value)}
-                />
+                <div style={{ border: '1px solid var(--b1)', borderRadius: 'var(--r10)', overflow: 'hidden', fontSize: '13.5px' }} ref={(el: any) => { editorDomRef.current = el; if (el) telemetry.attachEditor(el) }}>
+                  <CodeMirror
+                    value={code}
+                    height="340px"
+                    theme={oneDark}
+                    extensions={[cpp()]}
+                    basicSetup={{ lineNumbers: true, foldGutter: false, autocompletion: false, highlightActiveLine: true }}
+                    placeholder={'#include <iostream>\nusing namespace std;\n\nint main() {\n    // Viết code tại đây...\n    return 0;\n}'}
+                    onChange={(val: string) => setCode(val)}
+                    onUpdate={(vu: any) => {
+                      let ins = 0, del = 0
+                      try {
+                        vu.changes.iterChanges((fromA: number, toA: number, _fb: number, _tb: number, inserted: any) => {
+                          const insLen = inserted.length
+                          const delLen = toA - fromA
+                          if (insLen) ins += insLen
+                          if (delLen) del += delLen
+                        })
+                      } catch { }
+                      telemetry.recordEdit(ins, del)
+                    }}
+                  />
+                </div>
+                <div style={{ fontSize: '.66rem', color: 'var(--t4)', marginTop: '7px' }}>
+                  📊 Hệ thống ghi nhận nhịp làm bài (số lần gõ/dán/thời gian) để hỗ trợ học tập — không lưu nội dung phím của bạn.
+                </div>
                 <div style={{ display: 'flex', gap: '10px', marginTop: '13px', flexWrap: 'wrap' }}>
                   <button className="btn btn-primary" onClick={submit} disabled={submitting || !selAsgn}>
                     {submitting ? <><span className="spin" />Đang phân tích...</> : '🚀 Nộp bài & Phân tích'}
@@ -550,6 +720,7 @@ export default function StudentDashboard() {
                 </div>
               </div>
             </div>
+            )}
 
             {/* Pipeline — full width */}
             <div className="card">
@@ -589,6 +760,13 @@ export default function StudentDashboard() {
 
             {/* ── RESULTS ── */}
             {subResult && subResult.status !== 'pending' && (
+              (subResult.scoresHidden || subResult.scores_hidden) ? (
+                <div className="card" style={{ textAlign: 'center', padding: '40px', background: 'rgba(251,191,36,.06)', border: '1px solid rgba(251,191,36,.3)' }}>
+                  <div style={{ fontSize: '2.4rem' }}>🔒</div>
+                  <div style={{ fontWeight: 800, marginTop: '10px', fontFamily: 'var(--display)' }}>Bài thi đã nộp — điểm đang được giấu</div>
+                  <div style={{ fontSize: '.82rem', color: 'var(--t2)', marginTop: '6px' }}>Giáo viên sẽ công bố điểm sau khi hết thời gian thi. Bạn chỉ được nộp 1 lần duy nhất.</div>
+                </div>
+              ) : (
               <div className="card animate-fade-in-up" style={{ border: `1px solid ${subResult.status === 'passed' ? 'rgba(52,211,153,.25)' : subResult.status === 'failed' ? 'rgba(248,113,113,.25)' : 'rgba(251,191,36,.25)'}`, background: subResult.status === 'passed' ? 'rgba(16,185,129,.03)' : subResult.status === 'failed' ? 'rgba(229,62,62,.03)' : 'rgba(251,191,36,.03)' }}>
 
                 {/* Result header */}
@@ -708,6 +886,7 @@ export default function StudentDashboard() {
                   )}
                 </div>
               </div>
+              )
             )}
           </div>
         )}
@@ -770,15 +949,16 @@ export default function StudentDashboard() {
                 <div style={{ fontWeight: 700, fontSize: '.9rem', marginBottom: '16px', fontFamily: 'var(--display)' }}>📅 Lịch sử Tiến trình</div>
                 {asgns.map((a) => {
                   const sub = mySubs[a.id]
+                  const hidden = !!(sub?.scoresHidden ?? sub?.scores_hidden)
                   const sc = sub?.score_total || 0
-                  const sbc = sub ? (STATUS_BADGE[sub.status] || STATUS_BADGE.pending) : STATUS_BADGE.pending
+                  const sbc = hidden ? { i: '🔒', c: 'bdo' } : sub ? (STATUS_BADGE[sub.status] || STATUS_BADGE.pending) : STATUS_BADGE.pending
                   return (
                     <div key={a.id} style={{ display: 'flex', gap: '12px', padding: '12px 0', borderBottom: '1px solid var(--b1)', position: 'relative' }}>
                       <div style={{
                         width: 30, height: 30,
                         borderRadius: '50%',
-                        background: sub ? (sub.status === 'passed' ? 'var(--gng)' : sub.status === 'failed' ? 'rgba(229,62,62,.15)' : 'var(--ywg)') : 'var(--bg4)',
-                        border: `2px solid ${sub ? (sub.status === 'passed' ? '#34d399' : sub.status === 'failed' ? '#f87171' : '#fbbf24') : 'var(--b2)'}`,
+                        background: hidden ? 'rgba(251,191,36,.15)' : sub ? (sub.status === 'passed' ? 'var(--gng)' : sub.status === 'failed' ? 'rgba(229,62,62,.15)' : 'var(--ywg)') : 'var(--bg4)',
+                        border: `2px solid ${hidden ? 'var(--or)' : sub ? (sub.status === 'passed' ? '#34d399' : sub.status === 'failed' ? '#f87171' : '#fbbf24') : 'var(--b2)'}`,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: '.8rem', flexShrink: 0,
                       }}>
@@ -786,15 +966,15 @@ export default function StudentDashboard() {
                       </div>
                       <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div style={{ fontSize: '.86rem', fontWeight: 600 }}>{a.title}</div>
-                          <span style={{ fontFamily: 'var(--display)', fontSize: '.92rem', fontWeight: 800, color: scoreColor(sc) }}>
-                            {sub ? sc : <span style={{ color: 'var(--t4)', fontSize: '.78rem', fontFamily: 'var(--body)' }}>Chưa nộp</span>}
+                          <div style={{ fontSize: '.86rem', fontWeight: 600 }}>{a.title} { (a.isExam ?? a.is_exam) && <span className="badge bdy" style={{ fontSize: '.58rem', marginLeft: '6px' }}>📝 Thi</span>}</div>
+                          <span style={{ fontFamily: 'var(--display)', fontSize: '.92rem', fontWeight: 800, color: hidden ? 'var(--or)' : scoreColor(sc) }}>
+                            {hidden ? '🔒 Chờ công bố' : sub ? sc : <span style={{ color: 'var(--t4)', fontSize: '.78rem', fontFamily: 'var(--body)' }}>Chưa nộp</span>}
                           </span>
                         </div>
                         <div style={{ fontSize: '.72rem', color: 'var(--t3)', marginTop: '3px' }}>
                           {sub ? fmtDate(sub.submitted_at) : 'Chưa nộp'}
                         </div>
-                        {sub?.llm_feedback && (
+                        {!hidden && sub?.llm_feedback && (
                           <div style={{ fontSize: '.74rem', color: 'var(--t2)', marginTop: '4px', lineHeight: 1.5 }}>
                             {sub.llm_feedback.substring(0, 80)}...
                           </div>

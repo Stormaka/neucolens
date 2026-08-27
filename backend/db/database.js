@@ -179,6 +179,35 @@ function initSchema() {
       description TEXT,
       detected_at TEXT DEFAULT (datetime('now'))
     );
+
+    -- Phase 1: Programming-process telemetry (ProgSnap2-inspired)
+    -- Privacy: KHÔNG lưu nội dung ký tự đã gõ — chỉ đếm số lượng, độ trễ, timestamp.
+    CREATE TABLE IF NOT EXISTS submission_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      student_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      assignment_id INTEGER NOT NULL REFERENCES assignments(id) ON DELETE CASCADE,
+      session_id TEXT NOT NULL,
+      submission_id INTEGER REFERENCES submissions(id) ON DELETE SET NULL,
+      event_type TEXT NOT NULL,
+      payload_json TEXT DEFAULT '{}',
+      client_ts INTEGER,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    -- Phase 3: Exam Mode — phiên thi có giám sát (single attempt, timer, hide scores)
+    CREATE TABLE IF NOT EXISTS exam_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      student_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      assignment_id INTEGER NOT NULL REFERENCES assignments(id) ON DELETE CASCADE,
+      session_id TEXT UNIQUE NOT NULL,
+      started_at TEXT NOT NULL DEFAULT (datetime('now')),
+      expires_at TEXT NOT NULL,
+      submitted_at TEXT,
+      focus_lost_count INTEGER DEFAULT 0,
+      paste_blocked_count INTEGER DEFAULT 0,
+      fullscreen_exits INTEGER DEFAULT 0,
+      UNIQUE(student_id, assignment_id)
+    );
   `)
 }
 
@@ -192,6 +221,31 @@ function runMigrations() {
   addCol('student_profiles', 'mastery_json', 'TEXT DEFAULT "{}"')
   addCol('feedback_ratings', 'helpfulness_category', "TEXT DEFAULT 'helpful'")
   addCol('submissions', 'grading_status', "TEXT DEFAULT 'completed'")
+  addCol('submissions', 'process_metrics_json', 'TEXT')
+  // Phase 2: LLM-as-a-Judge rubric scoring + mixed-initiative review
+  addCol('submissions', 'llm_scores_json', 'TEXT')          // điểm LLM raw (0–5/tiêu chí) + provider/model
+  addCol('submissions', 'rubric_breakdown_json', 'TEXT')    // quyết định cuối từng tiêu chí (source: llm|engine|teacher|process)
+  addCol('submissions', 'review_status', "TEXT DEFAULT 'auto'") // auto | needs_review | reviewed | engine_only
+  // Phase 3: Exam Mode columns
+  addCol('assignments', 'is_exam', 'INTEGER DEFAULT 0')
+  addCol('assignments', 'duration_minutes', 'INTEGER')
+  addCol('assignments', 'allow_paste', 'INTEGER DEFAULT 1')
+  addCol('assignments', 'require_fullscreen', 'INTEGER DEFAULT 0')
+  addCol('assignments', 'shuffle_questions', 'INTEGER DEFAULT 0')
+  addCol('assignments', 'hide_scores_until', 'TEXT')
+
+  try {
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_submission_events_sub ON submission_events(submission_id);
+      CREATE INDEX IF NOT EXISTS idx_submission_events_sva ON submission_events(student_id, assignment_id);
+      CREATE INDEX IF NOT EXISTS idx_submission_events_session ON submission_events(session_id);
+      CREATE INDEX IF NOT EXISTS idx_exam_sessions_student ON exam_sessions(student_id);
+      CREATE INDEX IF NOT EXISTS idx_exam_sessions_assignment ON exam_sessions(assignment_id);
+      CREATE INDEX IF NOT EXISTS idx_assignments_is_exam ON assignments(is_exam);
+    `)
+  } catch (e) {
+    console.error('⚠️ submission_events index error:', e.message)
+  }
 
   // Migration for submissions status CHECK constraint to allow 'ungraded'
   try {

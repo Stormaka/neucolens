@@ -101,7 +101,8 @@ export const assignments = {
 }
 
 export const submissions = {
-  submit: (assignment_id: number, code: string) => { clearReadCache(); return API.post('/submissions', { assignment_id, code }) as Promise<any> },
+  submit: (assignment_id: number, code: string, process?: { session_id?: string; process_events?: any[] }) =>
+    { clearReadCache(); return API.post('/submissions', { assignment_id, code, ...process }) as Promise<any> },
   list: (query: Record<string, string | number> = {}) => API.get(`/submissions?${new URLSearchParams(Object.entries(query).map(([k,v]) => [k, String(v)])).toString()}`) as Promise<any>,
   poll: (id: number) => API.get(`/submissions/${id}`) as Promise<any>,
   me: (assignmentId: number) => API.get(`/submissions/me/${assignmentId}`) as Promise<any[]>,
@@ -109,6 +110,21 @@ export const submissions = {
    *  Returns { [assignmentId]: submission } */
   batchMy: (assignmentIds: number[]) => API.get(`/submissions/me/batch?assignmentIds=${assignmentIds.join(',')}`) as Promise<Record<number, any>>,
   byStudent: (studentId: number, classId: number) => API.get(`/submissions/student/${studentId}/classroom/${classId}`) as Promise<any[]>,
+  /** Phase 1: dữ liệu quá trình làm bài của một submission */
+  processEvents: (submissionId: number) => API.get(`/submissions/${submissionId}/process-events`) as Promise<any>,
+  /** Phase 2: hàng đợi duyệt chấm mixed-initiative */
+  needsReview: (opts?: { page?: number; limit?: number }) =>
+    API.get(`/submissions/needs-review?page=${opts?.page || 1}&limit=${opts?.limit || 20}`) as Promise<any>,
+  /** GV duyệt rubric: scores {criterionId:0..5} hoặc accept_llm=true */
+  review: (submissionId: number, payload: { scores?: Record<string, number>; accept_llm?: boolean }) =>
+    API.patch(`/submissions/${submissionId}/review`, payload) as Promise<any>,
+  /** Cohen's κ giữa LLM và GV (RQ1) */
+  agreementStats: () => API.get('/submissions/agreement-stats') as Promise<any>,
+  /** Phase 3: Exam Mode — phiên thi có giám sát */
+  startExam: (assignmentId: number) => { clearReadCache(); return API.post('/submissions/exam/start', { assignment_id: assignmentId }) as Promise<any> },
+  examSession: (assignmentId: number) => API.get(`/submissions/exam/${assignmentId}/session`) as Promise<any>,
+  examEvent: (assignmentId: number, type: 'focus_lost' | 'paste_blocked' | 'fullscreen_exit') => API.post(`/submissions/exam/${assignmentId}/event`, { type }) as Promise<any>,
+  examSessions: (assignmentId: number) => API.get(`/submissions/exam/${assignmentId}/sessions`) as Promise<any[]>,
 }
 
 export const chats = {

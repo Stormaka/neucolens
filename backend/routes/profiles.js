@@ -82,6 +82,7 @@ router.get('/:studentId/classroom/:classId', authenticate, (req, res) => {
 })
 
 // GET /api/profiles/classroom/:classId/ews — Early Warning System data
+// Phase 1: bổ sung process signals (Jadud EQ-lite, paste-ratio, keystroke latency)
 router.get('/classroom/:classId/ews', authenticate, (req, res) => {
   const db = getDb()
   const atRisk = db.prepare(`
@@ -99,9 +100,53 @@ router.get('/classroom/:classId/ews', authenticate, (req, res) => {
     WHERE sp.classroom_id=? AND sp.profile_type='ai-warning'
   `).all(req.params.classId, req.params.classId)
 
+  // ── Process analytics tổng hợp theo SV (từ các bài nộp gần nhất có telemetry) ──
+  const procRows = db.prepare(`
+    SELECT s.student_id, s.process_metrics_json, s.submitted_at
+    FROM submissions s JOIN assignments a ON s.assignment_id=a.id
+    WHERE a.classroom_id=? AND s.process_metrics_json IS NOT NULL
+    ORDER BY s.id DESC LIMIT 500
+  `).all(req.params.classId)
+
+  const byStudent = new Map()
+  for (const row of procRows) {
+    if (!byStudent.has(row.student_id)) byStudent.set(row.student_id, [])
+    try { byStudent.get(row.student_id).push(JSON.parse(row.process_metrics_json)) } catch { }
+  }
+  const summarize = list => {
+    if (!list.length) return null
+    const avg = k => list.reduce((s, m) => s + (Number(m?.[k]) || 0), 0) / list.length
+    const eqAvg = avg('eq_lite')
+    return {
+      submissions_analyzed: list.length,
+      avg_paste_ratio: +avg('paste_char_ratio').toFixed(3),
+      burst_paste_total: list.reduce((s, m) => s + (m?.burst_paste_count || 0), 0),
+      median_latency_ms: Math.round(avg('median_latency_ms') || 0),
+      avg_eq_lite: +eqAvg.toFixed(1),
+      max_process_risk: +Math.max(...list.map(m => Number(m?.process_risk) || 0)).toFixed(3),
+    }
+  }
+  const procSummary = new Map()
+  for (const [sid, list] of byStudent) procSummary.set(sid, summarize(list))
+
+  // SV chưa thuộc at-risk nhưng hành vi gõ code đáng lo → kênh cảnh báo thứ ba
+  const riskIds = new Set(atRisk.map(s => s.id))
+  const processWarnings = []
+  for (const [sid, sum] of procSummary) {
+    if (riskIds.has(sid)) continue
+    const concerning =
+      (sum.avg_eq_lite >= 40) ||
+      (sum.burst_paste_total >= 3 && sum.avg_paste_ratio >= 0.4) ||
+      sum.max_process_risk >= 0.5
+    if (!concerning) continue
+    const u = db.prepare('SELECT id,name,mssv FROM users WHERE id=?').get(sid)
+    if (u) processWarnings.push({ ...u, ...sum })
+  }
+
   res.json({
-    atRisk: atRisk.map(s => { const { misconceptions_json, ...clean } = s; return { ...clean, misconceptions: JSON.parse(misconceptions_json || '[]') } }),
-    aiWarning
+    atRisk: atRisk.map(s => { const { misconceptions_json, ...clean } = s; return { ...clean, misconceptions: JSON.parse(misconceptions_json || '[]'), process_summary: procSummary.get(clean.id) || null } }),
+    aiWarning,
+    processWarnings,
   })
 })
 

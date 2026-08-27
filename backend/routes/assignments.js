@@ -4,6 +4,42 @@ import { authenticate, requireRole, verifyClassroomAccess } from './auth.js'
 
 const router = express.Router()
 
+// Phase 3: helpers cho Exam Mode
+function serializeExamFields(row) {
+  if (!row) return row
+  return {
+    ...row,
+    is_exam: !!row.is_exam,
+    allow_paste: !!row.allow_paste,
+    require_fullscreen: !!row.require_fullscreen,
+    shuffle_questions: !!row.shuffle_questions,
+  }
+}
+function shuffleArray(arr, seed) {
+  // Deterministic shuffle per student+assignment (seed = hash) — Fisher-Yates với xorshift
+  const a = [...arr]
+  let s = seed >>> 0
+  const rand = () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; return (s >>> 0) / 4294967296 }
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]] }
+  return a
+}
+function hashSeed(studentId, assignmentId) {
+  let h = 2166136261
+  const str = `${studentId}:${assignmentId}`
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) }
+  return h >>> 0
+}
+function isScoresHidden(assignment, nowMs = Date.now()) {
+  if (!assignment) return false
+  if (assignment.hide_scores_until) {
+    const t = Date.parse(assignment.hide_scores_until)
+    if (!Number.isNaN(t) && nowMs < t) return true
+  }
+  // Mặc định exam giấu điểm khi còn open (chờ GV công bố bằng closed hoặc hide_scores_until)
+  if (assignment.is_exam && assignment.status === 'open') return true
+  return false
+}
+
 function verifyAssignmentAccess({ teacherOnly = false } = {}) {
   return (req, res, next) => {
     const db = getDb()
@@ -47,8 +83,9 @@ router.get('/classroom/:id', authenticate, verifyClassroomAccess, (req, res) => 
     const { avg_score, concepts_json, test_cases_json, ...aClean } = a
     const allTests = JSON.parse(test_cases_json || '[]')
     const sampleTests = req.user.role === 'teacher' ? allTests : allTests.filter(t => !t.hidden)
+    const serialized = serializeExamFields(aClean)
     return {
-      ...aClean,
+      ...serialized,
       concepts: JSON.parse(concepts_json || '[]'),
       avgScore: Math.round(avg_score || 0),
       sample_test_cases: sampleTests
@@ -59,24 +96,44 @@ router.get('/classroom/:id', authenticate, verifyClassroomAccess, (req, res) => 
 })
 
 // GET /api/assignments/:id — 4.9 Fix: giáo viên nhận được test_cases, sinh viên chỉ nhận sample tests
+// Phase 3: nếu shuffle_questions + is_exam, SV nhận test order đã trộn (deterministic per student)
 router.get('/:id', authenticate, verifyAssignmentAccess(), (req, res) => {
   const db = getDb()
   const a = db.prepare('SELECT * FROM assignments WHERE id=?').get(req.params.id)
   if (!a) return res.status(404).json({ error: 'Không tìm thấy bài tập' })
   const { concepts_json, test_cases_json, ...clean } = a
+  const serialized = serializeExamFields(clean)
   const allTestCases = JSON.parse(test_cases_json || '[]')
-  // Teacher thấy tất cả; Student chỉ thấy public test cases
-  const visibleTests = req.user.role === 'teacher'
+  let visibleTests = req.user.role === 'teacher'
     ? allTestCases
     : allTestCases.filter(tc => !tc.hidden)
-  res.json({ ...clean, concepts: JSON.parse(concepts_json || '[]'), sample_test_cases: visibleTests })
+  if (req.user.role === 'student' && a.is_exam && a.shuffle_questions) {
+    visibleTests = shuffleArray(visibleTests, hashSeed(req.user.id, a.id))
+  }
+  // Phase 3: kèm exam_session hiện tại cho SV (nếu là exam)
+  let exam_session = null
+  if (a.is_exam && req.user.role === 'student') {
+    exam_session = db.prepare('SELECT session_id, started_at, expires_at, submitted_at FROM exam_sessions WHERE student_id=? AND assignment_id=?').get(req.user.id, a.id) || null
+  }
+  res.json({ ...serialized, concepts: JSON.parse(concepts_json || '[]'), sample_test_cases: visibleTests, exam_session })
 })
 
 // POST /api/assignments — 4.9 Fix: nhận test_cases array (public + hidden)
 router.post('/', authenticate, requireRole('teacher'), verifyClassroomAccess, (req, res) => {
   const { classroom_id, title, description, lang, deadline, concepts, sample_code,
-    weight_t1, weight_t2, weight_t3, test_cases } = req.body
+    weight_t1, weight_t2, weight_t3, test_cases,
+    is_exam, duration_minutes, allow_paste, require_fullscreen, shuffle_questions, hide_scores_until } = req.body
   if (!classroom_id || !title) return res.status(400).json({ error: 'Thiếu thông tin bắt buộc' })
+
+  // Phase 3: validate exam fields
+  const isExam = is_exam ? 1 : 0
+  let duration = null
+  if (isExam) {
+    duration = parseInt(duration_minutes)
+    if (!duration || duration < 5 || duration > 300) return res.status(400).json({ error: 'duration_minutes phải 5–300 phút cho bài thi' })
+  }
+  const hideUntil = hide_scores_until ? new Date(hide_scores_until).toISOString() : null
+  if (hide_scores_until && !hideUntil) return res.status(400).json({ error: 'hide_scores_until không hợp lệ (ISO datetime)' })
 
   // Validate test_cases format nếu có
   const testCasesArr = Array.isArray(test_cases) ? test_cases.map(tc => ({
@@ -87,16 +144,19 @@ router.post('/', authenticate, requireRole('teacher'), verifyClassroomAccess, (r
 
   const db = getDb()
   const result = db.prepare(`
-    INSERT INTO assignments (classroom_id,title,description,lang,deadline,concepts_json,sample_code,weight_t1,weight_t2,weight_t3,status,test_cases_json)
-    VALUES (?,?,?,?,?,?,?,?,?,?,'open',?)
+    INSERT INTO assignments (classroom_id,title,description,lang,deadline,concepts_json,sample_code,weight_t1,weight_t2,weight_t3,status,test_cases_json,is_exam,duration_minutes,allow_paste,require_fullscreen,shuffle_questions,hide_scores_until)
+    VALUES (?,?,?,?,?,?,?,?,?,?,'open',?,?,?,?,?,?,?)
   `).run(
     classroom_id, title, description || '', lang || 'C++', deadline || null,
     JSON.stringify(concepts || []), sample_code || '',
     weight_t1 || 40, weight_t2 || 35, weight_t3 || 25,
-    JSON.stringify(testCasesArr)
+    JSON.stringify(testCasesArr),
+    isExam, duration, allow_paste === false || allow_paste === 0 ? 0 : 1,
+    require_fullscreen ? 1 : 0, shuffle_questions ? 1 : 0, hideUntil
   )
   res.status(201).json({
     id: result.lastInsertRowid, title, status: 'open',
+    is_exam: !!isExam, duration_minutes: duration,
     concepts: concepts || [],
     test_case_count: testCasesArr.length,
     hidden_test_count: testCasesArr.filter(t => t.hidden).length
@@ -105,7 +165,8 @@ router.post('/', authenticate, requireRole('teacher'), verifyClassroomAccess, (r
 
 // PATCH /api/assignments/:id — cập nhật thông tin (bao gồm sample_code, concepts, test_cases)
 router.patch('/:id', authenticate, requireRole('teacher'), verifyAssignmentAccess({ teacherOnly: true }), (req, res) => {
-  const { title, description, deadline, concepts, sample_code, lang, test_cases } = req.body
+  const { title, description, deadline, concepts, sample_code, lang, test_cases,
+    is_exam, duration_minutes, allow_paste, require_fullscreen, shuffle_questions, hide_scores_until } = req.body
   const db = getDb()
   const updates = []
   const vals = []
@@ -123,12 +184,28 @@ router.patch('/:id', authenticate, requireRole('teacher'), verifyAssignmentAcces
     })) : []
     updates.push('test_cases_json=?'); vals.push(JSON.stringify(testCasesArr))
   }
+  // Phase 3 exam fields
+  if (is_exam !== undefined) { updates.push('is_exam=?'); vals.push(is_exam ? 1 : 0) }
+  if (duration_minutes !== undefined) {
+    const d = duration_minutes === null ? null : parseInt(duration_minutes)
+    if (d !== null && (d < 5 || d > 300)) return res.status(400).json({ error: 'duration_minutes phải 5–300 hoặc null' })
+    updates.push('duration_minutes=?'); vals.push(d)
+  }
+  if (allow_paste !== undefined) { updates.push('allow_paste=?'); vals.push(allow_paste ? 1 : 0) }
+  if (require_fullscreen !== undefined) { updates.push('require_fullscreen=?'); vals.push(require_fullscreen ? 1 : 0) }
+  if (shuffle_questions !== undefined) { updates.push('shuffle_questions=?'); vals.push(shuffle_questions ? 1 : 0) }
+  if (hide_scores_until !== undefined) {
+    const v = hide_scores_until ? new Date(hide_scores_until).toISOString() : null
+    if (hide_scores_until && !v) return res.status(400).json({ error: 'hide_scores_until không hợp lệ' })
+    updates.push('hide_scores_until=?'); vals.push(v)
+  }
   if (!updates.length) return res.status(400).json({ error: 'Không có gì cập nhật' })
   vals.push(req.params.id)
   db.prepare(`UPDATE assignments SET ${updates.join(',')} WHERE id=?`).run(...vals)
   const updated = db.prepare('SELECT * FROM assignments WHERE id=?').get(req.params.id)
   const { concepts_json: uj, test_cases_json: utj, ...updClean } = updated
-  res.json({ ...updClean, concepts: JSON.parse(uj || '[]'), test_case_count: JSON.parse(utj || '[]').length })
+  const ser = serializeExamFields(updClean)
+  res.json({ ...ser, concepts: JSON.parse(uj || '[]'), test_case_count: JSON.parse(utj || '[]').length })
 })
 
 // PATCH /api/assignments/:id/status
@@ -150,8 +227,16 @@ router.get('/:id/submissions', authenticate, requireRole('teacher'), verifyAssig
     WHERE s.assignment_id=? ORDER BY s.submitted_at DESC
   `).all(req.params.id)
   res.json(subs.map(s => {
-    const { misconceptions_json, ...clean } = s
-    return { ...clean, misconceptions: JSON.parse(misconceptions_json || '[]') }
+    const { misconceptions_json, process_metrics_json, llm_scores_json, rubric_breakdown_json, ...clean } = s
+    const parse = x => { try { return x ? JSON.parse(x) : null } catch { return null } }
+    const rbRaw = parse(rubric_breakdown_json)
+    return {
+      ...clean,
+      misconceptions: JSON.parse(misconceptions_json || '[]'),
+      process_metrics: parse(process_metrics_json),
+      llm_scores: parse(llm_scores_json),
+      rubric_breakdown: Array.isArray(rbRaw) ? rbRaw : Array.isArray(rbRaw?.breakdown) ? rbRaw.breakdown : null,
+    }
   }))
 })
 

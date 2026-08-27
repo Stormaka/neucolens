@@ -20,6 +20,7 @@ export default defineConfig({
           'vendor-react':  ['react', 'react-dom', 'react-router-dom'],
           'vendor-ui':     ['lucide-react'],
           'vendor-data':   ['axios', 'd3'],
+          'vendor-editor': ['@uiw/react-codemirror', '@codemirror/lang-cpp', '@codemirror/theme-one-dark'],
         }
       }
     }

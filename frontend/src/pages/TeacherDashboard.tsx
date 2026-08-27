@@ -5,6 +5,8 @@ import { useAuth } from '../AuthContext'
 import { classrooms, assignments, profiles, submissions, misconceptions, chats, system } from '../api'
 import { ConceptHeatmap, RadarChart, scoreColor, PROFILE_BADGE, STATUS_BADGE, Loader, useToast, avBg, avTx, fmtDate, SessionChart, CodeBlock, ConceptTagInput } from '../components/ui'
 import CodeGraph from '../components/CodeGraph'
+import ProcessPanel from '../components/ProcessPanel'
+import ReviewQueue from '../components/ReviewQueue'
 
 export default function TeacherDashboard() {
   const { user, logout } = useAuth()
@@ -26,7 +28,7 @@ export default function TeacherDashboard() {
   const [svSearch, setSvSearch] = useState('')
   const [svFilter, setSvFilter] = useState('all')
   const [showCreateAsgn, setShowCreateAsgn] = useState(false)
-  const [newAsgn, setNewAsgn] = useState({ title: '', description: '', deadline: '', lang: 'C++', concepts: [] as string[], sample_code: '', weight_t1: 40, weight_t2: 35, weight_t3: 25 })
+  const [newAsgn, setNewAsgn] = useState({ title: '', description: '', deadline: '', lang: 'C++', concepts: [] as string[], sample_code: '', weight_t1: 40, weight_t2: 35, weight_t3: 25, is_exam: false, duration_minutes: 60, allow_paste: true, require_fullscreen: false, shuffle_questions: false, hide_scores_until: '' })
   const [showSampleGraph, setShowSampleGraph] = useState(false)
   const [showStudentGraph, setShowStudentGraph] = useState(false)
   const [selAsgnId, setSelAsgnId] = useState<number | null>(null)
@@ -35,6 +37,8 @@ export default function TeacherDashboard() {
   const [loading, setLoading] = useState(true)
   const [classId, setClassId] = useState<number | null>(null)
   const [systemChecks, setSystemChecks] = useState<any>(null)
+  const [reviewCount, setReviewCount] = useState(0)
+  const [examSessions, setExamSessions] = useState<any[]>([])
 
   useEffect(() => { loadData() }, [])
 
@@ -57,6 +61,11 @@ export default function TeacherDashboard() {
         const miscRes = await misconceptions.byClassroom(room.id)
         setMiscData(miscRes)
       } catch { }
+      // Phase 2: đếm hàng đợi duyệt chấm
+      try {
+        const nr = await submissions.needsReview({ limit: 1 })
+        setReviewCount(nr.total || 0)
+      } catch { setReviewCount(0) }
     } catch (e: any) { toast(e.error || 'Lỗi tải dữ liệu', true) }
     finally { setLoading(false) }
   }
@@ -84,11 +93,22 @@ export default function TeacherDashboard() {
 
   async function createAssignment() {
     if (!newAsgn.title || !classId) { toast('Điền đầy đủ thông tin', true); return }
+    if (newAsgn.is_exam && (!newAsgn.duration_minutes || newAsgn.duration_minutes < 5 || newAsgn.duration_minutes > 300)) { toast('Thời lượng thi phải 5–300 phút', true); return }
     try {
-      await assignments.create({ ...newAsgn, classroom_id: classId })
-      toast('Đã tạo bài tập mới!')
+      const payload: any = { ...newAsgn, classroom_id: classId }
+      // Phase 3: exam fields — normalize hide_scores_until to ISO or null
+      if (!payload.is_exam) { delete payload.duration_minutes; delete payload.hide_scores_until; delete payload.allow_paste; delete payload.require_fullscreen; delete payload.shuffle_questions }
+      else {
+        if (payload.hide_scores_until) payload.hide_scores_until = new Date(payload.hide_scores_until).toISOString()
+        else payload.hide_scores_until = new Date(Date.now() + 7 * 24 * 3600_000).toISOString() // mặc định giấu 7 ngày
+        payload.allow_paste = payload.allow_paste ? 1 : 0
+        payload.require_fullscreen = payload.require_fullscreen ? 1 : 0
+        payload.shuffle_questions = payload.shuffle_questions ? 1 : 0
+      }
+      await assignments.create(payload)
+      toast(payload.is_exam ? '✅ Đã tạo bài thi có giám sát!' : 'Đã tạo bài tập mới!')
       setShowCreateAsgn(false)
-      setNewAsgn({ title: '', description: '', deadline: '', lang: 'C++', concepts: [], sample_code: '', weight_t1: 40, weight_t2: 35, weight_t3: 25 })
+      setNewAsgn({ title: '', description: '', deadline: '', lang: 'C++', concepts: [], sample_code: '', weight_t1: 40, weight_t2: 35, weight_t3: 25, is_exam: false, duration_minutes: 60, allow_paste: true, require_fullscreen: false, shuffle_questions: false, hide_scores_until: '' })
       setShowSampleGraph(false)
       const updated = await assignments.byClassroom(classId)
       setAsgns(updated)
@@ -104,11 +124,15 @@ export default function TeacherDashboard() {
   async function selectAssignment(a: any) {
     setSelAsgnId(a.id)
     setAsgnSubsLoading(true)
+    setExamSessions([])
     try {
       const subs = await assignments.submissions(a.id)
       setAsgnSubs(subs)
     } catch { setAsgnSubs([]) }
     setAsgnSubsLoading(false)
+    if (a.isExam) {
+      try { const sess = await submissions.examSessions(a.id); setExamSessions(sess || []) } catch { setExamSessions([]) }
+    }
   }
 
   const filtered = students.filter(s =>
@@ -189,7 +213,7 @@ export default function TeacherDashboard() {
 
         {/* ── Tabs ── */}
         <div className="tabs" style={{ marginBottom: '24px' }}>
-          {[['overview', '📊 Tổng quan'], ['assignments', '📋 Bài tập'], ['students', '👥 Sinh viên'], ['misconceptions', '🧠 Ngộ nhận'], ['ews', '🚨 EWS & Cảnh báo']].map(([id, lbl]) => (
+          {[['overview', '📊 Tổng quan'], ['assignments', '📋 Bài tập'], ['students', '👥 Sinh viên'], ['misconceptions', '🧠 Ngộ nhận'], ['ews', '🚨 EWS & Cảnh báo'], ['review', `⚖️ Duyệt chấm${reviewCount > 0 ? ` (${reviewCount})` : ''}`]].map(([id, lbl]) => (
             <button key={id} className={`tab ${activeTab === id ? 'active' : ''}`} onClick={() => setActiveTab(id)}>{lbl}</button>
           ))}
         </div>
@@ -337,6 +361,10 @@ export default function TeacherDashboard() {
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', marginBottom: '7px' }}>
                         <span className={`badge ${a.status === 'open' ? 'bdg' : 'bdn'}`}>{a.status === 'open' ? '🟢 Mở' : '⚫ Đóng'}</span>
+                        {a.isExam && <span className="badge bdy" title={`Thi ${a.durationMinutes || a.duration_minutes || 60}'`}>📝 Thi {a.durationMinutes || a.duration_minutes || 60}'</span>}
+                        {a.isExam && a.hideScoresUntil && <span className="badge bdo" title={a.hideScoresUntil}>🔒 Giấu điểm</span>}
+                        {a.isExam && !a.allowPaste && <span className="badge bdn" style={{ fontSize: '.56rem' }}>🚫 Paste</span>}
+                        {a.isExam && a.requireFullscreen && <span className="badge bdn" style={{ fontSize: '.56rem' }}>⛶ Fullscreen</span>}
                         <span className="badge bdn" style={{ fontSize: '.62rem' }}>{a.lang || 'C++'}</span>
                         <span style={{ fontSize: '.65rem', color: 'var(--t3)' }}>📅 DL: {fmtDate(a.deadline)}</span>
                       </div>
@@ -369,10 +397,23 @@ export default function TeacherDashboard() {
                       <h3 style={{ margin: 0, fontWeight: 800, fontSize: '1.02rem', fontFamily: 'var(--display)' }}>⚙️ Quản lý Bài tập: {selAsgn.title}</h3>
                       <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px', flexWrap: 'wrap' }}>
                         <span className={`badge ${selAsgn.status === 'open' ? 'bdg' : 'bdn'}`}>{selAsgn.status === 'open' ? '🟢 Đang mở' : '⚫ Đã đóng'}</span>
+                        {selAsgn.isExam && <span className="badge bdy">📝 Thi {(selAsgn.durationMinutes || selAsgn.duration_minutes || 60)} phút</span>}
+                        {selAsgn.isExam && <span className="badge bdn">{selAsgn.allowPaste ? '📋 Paste OK' : '🚫 Chặn paste'}</span>}
+                        {selAsgn.isExam && selAsgn.requireFullscreen && <span className="badge bdn">⛶ Yêu cầu fullscreen</span>}
+                        {selAsgn.isExam && selAsgn.shuffleQuestions && <span className="badge bdp">🔀 Trộn đề</span>}
                         <span style={{ fontSize: '.76rem', color: 'var(--t2)' }}>
                           Hạn chót: <strong style={{ color: 'var(--t1)' }}>{fmtDate(selAsgn.deadline)}</strong>
                         </span>
                       </div>
+                      {selAsgn.isExam && selAsgn.hideScoresUntil && (
+                        <div style={{ marginTop: '8px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '.74rem', color: 'var(--or)' }}>🔒 Giấu điểm đến {fmtDate(selAsgn.hideScoresUntil)}</span>
+                          <button className="btn btn-sm btn-primary" onClick={async () => {
+                            if (!window.confirm('Công bố điểm ngay? Sinh viên sẽ thấy điểm tức thì.')) return
+                            try { await assignments.update(selAsgn.id, { hide_scores_until: null }); toast('✅ Đã công bố điểm!'); const u = await assignments.byClassroom(classId); setAsgns(u); setSelAsgnId(selAsgn.id) } catch (e: any) { toast(e.error || 'Lỗi', true) }
+                          }}>🔓 Công bố điểm ngay</button>
+                        </div>
+                      )}
                     </div>
                     <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
                       {/* Extend deadline */}
@@ -455,6 +496,31 @@ export default function TeacherDashboard() {
                         </div>
                       )
                     })}
+                  </div>
+                )}
+                {selAsgn.isExam && (
+                  <div className="card" style={{ marginTop: '18px' }}>
+                    <div style={{ fontWeight: 700, fontSize: '.9rem', marginBottom: '12px', fontFamily: 'var(--display)' }}>👁️ Giám sát Thi — {examSessions.length} phiên đã bắt đầu</div>
+                    {examSessions.length === 0 ? (
+                      <div style={{ color: 'var(--t3)', fontSize: '.78rem', padding: '12px', textAlign: 'center' }}>Chưa có sinh viên nào bấm “Bắt đầu làm bài”</div>
+                    ) : (
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.78rem' }}>
+                          <thead><tr style={{ color: 'var(--t3)', borderBottom: '1px solid var(--b2)', textAlign: 'left' }}><th style={{ padding: '6px 8px' }}>Sinh viên</th><th style={{ padding: '6px 8px' }}>Bắt đầu</th><th style={{ padding: '6px 8px' }}>Hết hạn</th><th style={{ padding: '6px 8px' }}>Nộp</th><th style={{ padding: '6px 8px' }}>Focus mất</th><th style={{ padding: '6px 8px' }}>Paste chặn</th><th style={{ padding: '6px 8px' }}>Thoát FS</th></tr></thead>
+                          <tbody>{examSessions.map((es: any) => (
+                            <tr key={es.id} style={{ borderBottom: '1px solid var(--b1)' }}>
+                              <td style={{ padding: '7px 8px', fontWeight: 600 }}>{es.student_name} <span style={{ color: 'var(--t3)', fontSize: '.68rem' }}>{es.student_code}</span></td>
+                              <td style={{ padding: '7px 8px' }}>{new Date(es.started_at).toLocaleString('vi-VN')}</td>
+                              <td style={{ padding: '7px 8px', color: Date.parse(es.expires_at) < Date.now() ? '#f87171' : 'var(--t1)' }}>{new Date(es.expires_at).toLocaleString('vi-VN')}</td>
+                              <td style={{ padding: '7px 8px' }}>{es.submitted_at ? '✅ ' + new Date(es.submitted_at).toLocaleString('vi-VN') : es.submission_id ? '✅' : '⏳ Chưa nộp'}</td>
+                              <td style={{ padding: '7px 8px', color: es.focus_lost_count > 5 ? '#f87171' : 'inherit' }}>{es.focus_lost_count}</td>
+                              <td style={{ padding: '7px 8px', color: es.paste_blocked_count > 0 ? '#fbbf24' : 'inherit' }}>{es.paste_blocked_count}</td>
+                              <td style={{ padding: '7px 8px', color: es.fullscreen_exits > 2 ? '#f87171' : 'inherit' }}>{es.fullscreen_exits}</td>
+                            </tr>
+                          ))}</tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -637,7 +703,13 @@ export default function TeacherDashboard() {
                         <div key={i} className={`sess-card ${selSession?.assignment_id === sess.assignment_id ? 'active' : ''}`} onClick={() => setSelSession(sess)}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
                             <span style={{ fontSize: '.67rem', fontWeight: 700, color: 'var(--t3)' }}>B{i + 1}</span>
-                            {sess.ai_suspicion_flag ? <span className="badge bdy" style={{ fontSize: '.56rem' }}>🤖 AI</span> : null}
+                            <span style={{ display: 'flex', gap: '4px' }}>
+                              {(sess.process_metrics?.flags || []).some((f: string) => f.startsWith('high_paste') || f === 'burst_paste_dominant')
+                                ? <span className="badge bdy" title="Tín hiệu dán code bất thường" style={{ fontSize: '.56rem' }}>📋 Paste</span> : null}
+                              {sess.review_status === 'needs_review'
+                                ? <span className="badge bdy" title="Chờ GV duyệt rubric LLM" style={{ fontSize: '.56rem' }}>⚖️ Duyệt</span> : null}
+                              {sess.ai_suspicion_flag ? <span className="badge bdy" style={{ fontSize: '.56rem' }}>🤖 AI</span> : null}
+                            </span>
                           </div>
                           <div style={{ fontSize: '.76rem', fontWeight: 600, lineHeight: 1.35, marginBottom: '8px' }}>
                             {sess.assignment_title?.replace(/Buổi \d+: /, '') || `Bài ${i + 1}`}
@@ -691,6 +763,9 @@ export default function TeacherDashboard() {
                         <div style={{ color: '#fed7aa' }}>{selSession.ai_suspicion_reason}</div>
                       </div>
                     )}
+
+                    {/* Phase 1: Process analytics — hành vi làm bài */}
+                    <ProcessPanel submissionId={selSession.id} />
 
                     {selSession.code && (
                       showStudentGraph ? (
@@ -962,6 +1037,13 @@ export default function TeacherDashboard() {
             </div>
           </div>
         )}
+
+        {/* ── TAB: REVIEW QUEUE (Phase 2 — mixed-initiative) ── */}
+        {activeTab === 'review' && (
+          <div className="animate-fade-in">
+            <ReviewQueue />
+          </div>
+        )}
       </div>
 
       {/* ── Create Assignment Modal ── */}
@@ -1015,6 +1097,27 @@ export default function TeacherDashboard() {
                 {showSampleGraph && newAsgn.sample_code.trim() && (
                   <div style={{ marginTop: '13px' }}>
                     <CodeGraph code={newAsgn.sample_code} lang={newAsgn.lang} concepts={newAsgn.concepts} height={360} title="Knowledge Graph — Đáp án Mẫu" />
+                  </div>
+                )}
+              </div>
+              {/* Phase 3: Exam Mode */}
+              <div style={{ border: '1px solid var(--b1)', borderRadius: '10px', padding: '14px', background: newAsgn.is_exam ? 'var(--bg3)' : 'transparent' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '.9rem' }}>
+                  <input type="checkbox" checked={newAsgn.is_exam} onChange={e => setNewAsgn({ ...newAsgn, is_exam: e.target.checked, allow_paste: e.target.checked ? false : true, require_fullscreen: e.target.checked ? true : false })} />
+                  📝 Chế độ Thi có giám sát (Exam Mode)
+                </label>
+                {newAsgn.is_exam && (
+                  <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '10px' }}>
+                      <div><label className="label">Thời lượng (phút) *</label><input className="input" type="number" min={5} max={300} value={newAsgn.duration_minutes} onChange={e => setNewAsgn({ ...newAsgn, duration_minutes: +e.target.value })} /></div>
+                      <div><label className="label">Giấu điểm đến</label><input className="input" type="datetime-local" value={newAsgn.hide_scores_until} onChange={e => setNewAsgn({ ...newAsgn, hide_scores_until: e.target.value })} /></div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '.82rem' }}><input type="checkbox" checked={!!newAsgn.allow_paste} onChange={e => setNewAsgn({ ...newAsgn, allow_paste: e.target.checked })} /> Cho phép dán (paste)</label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '.82rem' }}><input type="checkbox" checked={!!newAsgn.require_fullscreen} onChange={e => setNewAsgn({ ...newAsgn, require_fullscreen: e.target.checked })} /> Yêu cầu fullscreen</label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '.82rem' }}><input type="checkbox" checked={!!newAsgn.shuffle_questions} onChange={e => setNewAsgn({ ...newAsgn, shuffle_questions: e.target.checked })} /> Trộn đề (shuffle test order)</label>
+                    </div>
+                    <div style={{ fontSize: '.7rem', color: 'var(--t3)' }}>Thi: 1 lần nộp duy nhất • Hết giờ auto-nộp • Điểm ẩn tới khi GV công bố (đóng bài hoặc hết hide_until) • Ghi nhận paste/fullscreen/focus.</div>
                   </div>
                 )}
               </div>

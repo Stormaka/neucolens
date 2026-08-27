@@ -685,7 +685,16 @@ export async function analyzeCode(code, assignment, studentName = '', options = 
     ai_suspicion_reason: aiResult.reason,
     misconceptions_json: JSON.stringify(misconceptions),
     misconceptions,
-    concept_scores
+    concept_scores,
+    // Phase 2: tín hiệu chất lượng thô cho engine-proxy của rubric LLM-judge
+    quality_signals: {
+      hasComments, meaningfulComments, hasGoodNaming,
+      extraFunctionCount: (ast.functions || []).filter(f => f.name !== 'main').length,
+      branchCount, isReasonableComplexity,
+      estimatedBigO: ast.estimatedBigO || null,
+      runnerStatus, testPassCount: testResult.passCount, testTotalCount: testResult.totalCount,
+      hasInfiniteLoop, hasOffByOne, hasMultipleIf,
+    }
   }
 }
 
