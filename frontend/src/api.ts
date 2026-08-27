@@ -4,6 +4,7 @@ import axios from 'axios'
 
 const camelKey = (key: string) => key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
 const toCamelCase = (value: any): any => {
+  if (value instanceof Blob || value instanceof ArrayBuffer) return value
   if (Array.isArray(value)) return value.map(toCamelCase)
   if (!value || typeof value !== 'object') return value
   return Object.fromEntries(Object.entries(value).map(([key, child]) => [camelKey(key), toCamelCase(child)]))
@@ -98,6 +99,8 @@ export const assignments = {
   update: (id: number, data: any) => { clearReadCache(); return API.patch(`/assignments/${id}`, data) as Promise<any> },
   setStatus: (id: number, status: string) => { clearReadCache(); return API.patch(`/assignments/${id}/status`, { status }) as Promise<any> },
   submissions: (id: number) => API.get(`/assignments/${id}/submissions`) as Promise<any[]>,
+  /** Phase 4B: plagiarism pairs per assignment */
+  plagiarism: (id: number, threshold = 0.8) => API.get(`/assignments/${id}/plagiarism?threshold=${threshold}`) as Promise<any>,
 }
 
 export const submissions = {
@@ -175,6 +178,12 @@ export const admin = {
   assignments: {
     extendDeadline: (id: number, deadline: string) => API.patch(`/admin/assignments/${id}/deadline`, { deadline }) as Promise<any>,
     setStatus: (id: number, status: string) => API.patch(`/admin/assignments/${id}/status`, { status }) as Promise<any>,
+  },
+  research: {
+    stats: (classroomId?: number) => API.get(`/admin/research/stats${classroomId ? `?classroomId=${classroomId}` : ''}`) as Promise<any>,
+    exportJson: (classroomId?: number) => API.get(`/admin/research/export?format=json${classroomId ? `&classroomId=${classroomId}` : ''}`) as Promise<any>,
+    exportCsvZip: (classroomId?: number) => API.get(`/admin/research/export?format=csv${classroomId ? `&classroomId=${classroomId}` : ''}`, { responseType: 'blob' }) as Promise<any>,
+    plagiarism: (assignmentId: number, threshold = 0.8) => API.get(`/admin/research/plagiarism?assignmentId=${assignmentId}&threshold=${threshold}`) as Promise<any>,
   }
 }
 

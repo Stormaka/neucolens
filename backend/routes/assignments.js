@@ -1,6 +1,7 @@
 import express from 'express'
 import { getDb } from '../db/database.js'
 import { authenticate, requireRole, verifyClassroomAccess } from './auth.js'
+import { detectPlagiarism } from '../services/plagiarism.js'
 
 const router = express.Router()
 
@@ -238,6 +239,23 @@ router.get('/:id/submissions', authenticate, requireRole('teacher'), verifyAssig
       rubric_breakdown: Array.isArray(rbRaw) ? rbRaw : Array.isArray(rbRaw?.breakdown) ? rbRaw.breakdown : null,
     }
   }))
+})
+
+// GET /api/assignments/:id/plagiarism?threshold=0.8 — Phase 4B (teacher)
+router.get('/:id/plagiarism', authenticate, requireRole('teacher'), verifyAssignmentAccess({ teacherOnly: true }), (req, res) => {
+  const threshold = Math.min(0.95, Math.max(0.5, Number(req.query.threshold) || 0.8))
+  const db = getDb()
+  const latest = db.prepare(`
+    SELECT s.id, s.student_id, s.code, u.name student_name
+    FROM submissions s JOIN users u ON u.id=s.student_id
+    WHERE s.assignment_id=?
+    ORDER BY s.student_id, s.id DESC
+  `).all(req.params.id)
+  const map = new Map()
+  latest.forEach(r => { if (!map.has(r.student_id)) map.set(r.student_id, r) })
+  const uniq = [...map.values()].filter(r => r.code && r.code.length > 20)
+  const pairs = detectPlagiarism(uniq, threshold)
+  res.json({ assignment_id: Number(req.params.id), threshold, total_submissions: uniq.length, pairs })
 })
 
 export default router

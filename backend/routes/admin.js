@@ -1,7 +1,10 @@
 import express from 'express'
 import bcrypt from 'bcryptjs'
+import AdmZip from 'adm-zip'
 import { getDb } from '../db/database.js'
 import { authenticate, requireRole } from './auth.js'
+import { buildResearchExport, toCsv } from '../services/exportService.js'
+import { detectPlagiarism } from '../services/plagiarism.js'
 
 const router = express.Router()
 
@@ -145,6 +148,130 @@ router.patch('/assignments/:id/status', (req, res) => {
   if (!asgn) return res.status(404).json({ error: 'Không tìm thấy bài tập' })
   db.prepare('UPDATE assignments SET status=? WHERE id=?').run(status, req.params.id)
   res.json({ success: true, status })
+})
+
+// ── Phase 4A: Research Export (Excel 4 sheets / CSV zip / JSON) ──────────
+// GET /api/admin/research/export?classroomId=1&format=json|csv|excel
+router.get('/research/export', (req, res) => {
+  const classroomId = req.query.classroomId ? Number(req.query.classroomId) : null
+  const format = String(req.query.format || 'json').toLowerCase()
+  const db = getDb()
+  if (classroomId) {
+    const owns = db.prepare('SELECT 1 FROM classrooms WHERE id=? AND lecturer_id=?').get(classroomId, req.user.id)
+    if (!owns) return res.status(403).json({ error: 'Không có quyền xuất dữ liệu lớp này', code: 'FORBIDDEN_CLASSROOM' })
+  }
+  const data = buildResearchExport(classroomId)
+
+  if (format === 'csv') {
+    const zip = new AdmZip()
+    const sheets = {
+      'students.csv': { rows: data.students, cols: ['student_id','group','gender','age','major','class_code','consent_signed','pre_score','pre_test_date','post_score','post_test_date','midterm_grade','final_grade','dropout','dropout_week','dropout_reason','interview_done','notes'] },
+      'submissions.csv': { rows: data.submissions, cols: ['student_id','group','week','assignment_id','submitted_at','submissions_count','time_to_submit_hours','git_commits','test_pass_rate','tier1_score','tier2_score','tier3_score','total_score','llm_proficiency_level','llm_feedback_length','teacher_reviewed','teacher_override_score'] },
+      'llm_vs_human.csv': { rows: data.llm_vs_human, cols: ['submission_id','student_id','week','human_score_g1','human_score_g2','human_score_g3','human_score_avg','llm_score','human_level','llm_level','grader_disagreement','notes'] },
+      'early_warning.csv': { rows: data.early_warning, cols: ['student_id','group','week_assessed','system_flag','system_risk_score','teacher_notified','intervention_done','actual_at_risk','predicted_at_risk','outcome_notes'] },
+    }
+    for (const [name, { rows, cols }] of Object.entries(sheets)) {
+      zip.addFile(name, Buffer.from(toCsv(rows, cols), 'utf8'))
+    }
+    // Thêm README
+    zip.addFile('README.txt', Buffer.from('NEU-CodeLens Research Export — 4 sheets matching data_collection_template.md\nGenerated: ' + new Date().toISOString() + '\nAnonymized: student_id = T001...\n', 'utf8'))
+    const buf = zip.toBuffer()
+    res.set({ 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="neu-codelens-export-${classroomId||'all'}-${Date.now()}.zip"`, 'Content-Length': buf.length })
+    return res.send(buf)
+  }
+
+  if (format === 'excel') {
+    // Thử dùng exceljs nếu có, fallback về JSON
+    import('exceljs').then(async ({ default: ExcelJS }) => {
+      const wb = new ExcelJS.Workbook()
+      wb.creator = 'NEU-CodeLens'
+      wb.created = new Date()
+      const addSheet = (name, rows, cols) => {
+        const ws = wb.addWorksheet(name)
+        ws.addRow(cols)
+        const header = ws.getRow(1)
+        header.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+        header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2D3748' } }
+        header.commit()
+        rows.forEach(r => ws.addRow(cols.map(c => r[c] ?? '')))
+        ws.columns.forEach(col => { col.width = 14 })
+      }
+      addSheet('students', data.students, ['student_id','group','gender','age','major','class_code','consent_signed','pre_score','pre_test_date','post_score','post_test_date','midterm_grade','final_grade','dropout','dropout_week','dropout_reason','interview_done','notes'])
+      addSheet('submissions', data.submissions, ['student_id','group','week','assignment_id','submitted_at','submissions_count','time_to_submit_hours','git_commits','test_pass_rate','tier1_score','tier2_score','tier3_score','total_score','llm_proficiency_level','llm_feedback_length','teacher_reviewed','teacher_override_score'])
+      addSheet('llm_vs_human', data.llm_vs_human, ['submission_id','student_id','week','human_score_g1','human_score_g2','human_score_g3','human_score_avg','llm_score','human_level','llm_level','grader_disagreement','notes'])
+      addSheet('early_warning', data.early_warning, ['student_id','group','week_assessed','system_flag','system_risk_score','teacher_notified','intervention_done','actual_at_risk','predicted_at_risk','outcome_notes'])
+      res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="neu-codelens-${classroomId||'all'}-${Date.now()}.xlsx"` })
+      await wb.xlsx.write(res)
+      res.end()
+    }).catch(() => {
+      // Fallback JSON nếu chưa cài exceljs
+      res.json({ ...data, note: 'exceljs not installed — run npm install exceljs --prefix backend for .xlsx, fallback JSON', _anonMap: undefined })
+    })
+    return
+  }
+
+  // default json (anonymized)
+  res.json({ ...data, _anonMap: undefined })
+})
+
+// GET /api/admin/research/stats?classroomId=1 — tóm tắt cho dashboard
+router.get('/research/stats', (req, res) => {
+  const classroomId = req.query.classroomId ? Number(req.query.classroomId) : null
+  const db = getDb()
+  if (classroomId) {
+    const owns = db.prepare('SELECT 1 FROM classrooms WHERE id=? AND lecturer_id=?').get(classroomId, req.user.id)
+    if (!owns) return res.status(403).json({ error: 'Không có quyền', code: 'FORBIDDEN_CLASSROOM' })
+  }
+  const data = buildResearchExport(classroomId)
+  // Tính nhanh kappa từ llm_vs_human nếu có
+  let kappa = null, mae = null, r = null
+  if (data.llm_vs_human.length >= 5) {
+    const diffs = data.llm_vs_human.map(x => Math.abs((x.llm_score||0) - (x.human_score_avg||0)))
+    mae = diffs.length ? Math.round(diffs.reduce((a,b)=>a+b,0)/diffs.length * 100)/100 : null
+  }
+  res.json({
+    classroomId,
+    counts: {
+      students: data.students.length,
+      submissions: data.submissions.length,
+      reviewed: data.llm_vs_human.length,
+      early_warning: data.early_warning.length,
+    },
+    llm_vs_human: { n: data.llm_vs_human.length, mae },
+    kappa_target: 0.61,
+    note: 'Dùng /research/export?format=excel để chạy statistical_analysis.py',
+  })
+})
+
+// ── Phase 4B: Plagiarism quick check (admin) ───────────────────────────
+// GET /api/admin/research/plagiarism?assignmentId=15&threshold=0.8
+router.get('/research/plagiarism', (req, res) => {
+  const assignmentId = Number(req.query.assignmentId)
+  const threshold = Math.min(0.95, Math.max(0.5, Number(req.query.threshold) || 0.8))
+  if (!assignmentId) return res.status(400).json({ error: 'Thiếu assignmentId', code: 'MISSING_ASSIGNMENT' })
+  const db = getDb()
+  const asgn = db.prepare('SELECT classroom_id FROM assignments WHERE id=?').get(assignmentId)
+  if (!asgn) return res.status(404).json({ error: 'Không tìm thấy bài tập' })
+  const owns = db.prepare('SELECT 1 FROM classrooms WHERE id=? AND lecturer_id=?').get(asgn.classroom_id, req.user.id)
+  if (!owns) return res.status(403).json({ error: 'Không có quyền', code: 'FORBIDDEN_CLASSROOM' })
+  const subs = db.prepare(`
+    SELECT s.id, s.student_id, s.code, u.name student_name
+    FROM submissions s JOIN users u ON u.id=s.student_id
+    WHERE s.assignment_id=? AND s.code IS NOT NULL AND length(s.code) > 20
+    GROUP BY s.student_id HAVING MAX(s.id) = s.id
+  `).all(assignmentId)
+  // Lấy latest per student (group by)
+  const latest = db.prepare(`
+    SELECT s.id, s.student_id, s.code, u.name student_name
+    FROM submissions s JOIN users u ON u.id=s.student_id
+    WHERE s.assignment_id=?
+    ORDER BY s.student_id, s.id DESC
+  `).all(assignmentId)
+  const map = new Map()
+  latest.forEach(r => { if (!map.has(r.student_id)) map.set(r.student_id, r) })
+  const uniq = [...map.values()]
+  const pairs = detectPlagiarism(uniq, threshold)
+  res.json({ assignmentId, threshold, total_submissions: uniq.length, pairs, note: 'Jaccard 5-gram trên code đã chuẩn hoá (bỏ comment/#include)' })
 })
 
 export default router

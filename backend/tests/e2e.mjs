@@ -229,7 +229,32 @@ try {
   const examEvent = await json(`/submissions/exam/${examId}/event`, { method: 'POST', headers: authHeaders(examStudentToken), body: JSON.stringify({ type: 'focus_lost' }) })
   assert(examEvent.response.status === 200 && examEvent.body.success === true, 'Exam event focus_lost lỗi')
 
-  console.log('E2E PASS: auth, password policy, refresh rotation, RBAC, pagination/filtering, anti-copy, scoring, chat, error format, process-telemetry, exam-mode')
+  // ── Phase 4A: Research Export ──────────────────────────────────────────
+  const researchStats = await json('/admin/research/stats?classroomId=1', { headers: authHeaders(rotated.body.access_token) })
+  assert(researchStats.response.status === 200 && researchStats.body.counts.students >= 10, `research stats lỗi ${JSON.stringify(researchStats.body).slice(0,200)}`)
+  const researchExport = await json('/admin/research/export?classroomId=1&format=json', { headers: authHeaders(rotated.body.access_token) })
+  assert(researchExport.response.status === 200 && Array.isArray(researchExport.body.students) && researchExport.body.students.length >= 10, `research export json lỗi ${JSON.stringify(researchExport.body).slice(0,300)}`)
+  assert(!researchExport.body.students[0].email && researchExport.body.students[0]._real_id === undefined, 'export chưa ẩn danh')
+  const csvRes = await fetch(base + '/admin/research/export?classroomId=1&format=csv', { headers: authHeaders(rotated.body.access_token) })
+  assert(csvRes.ok && (csvRes.headers.get('content-type') || '').includes('zip'), `research csv zip lỗi ${csvRes.status}`)
+  // ── Phase 4B: Plagiarism ───────────────────────────────────────────────
+  const plagAsgn = await json('/assignments', { method: 'POST', headers: authHeaders(rotated.body.access_token), body: JSON.stringify({ classroom_id: 1, title: 'Plag Test E2E', description: 'plag check', lang: 'C++', concepts: ['Loops'], sample_code: 'int x=1;', test_cases: [{ input: '1', expected: '1', hidden: false }] }) })
+  assert(plagAsgn.response.status === 201, `Tạo plag assignment lỗi ${JSON.stringify(plagAsgn.body).slice(0,200)}`)
+  const plagId = plagAsgn.body.id
+  const s1 = await json('/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'tuan@neu.edu.vn', password: 'student123' }) })
+  const s2 = await json('/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'son@neu.edu.vn', password: 'student123' }) })
+  const codePlag = '#include <iostream>\nint main(){int a=1;int b=2;cout<<a+b;return 0;}'
+  const sub1 = await json('/submissions', { method: 'POST', headers: authHeaders(s1.body.access_token), body: JSON.stringify({ assignment_id: plagId, code: codePlag }) })
+  const sub2 = await json('/submissions', { method: 'POST', headers: authHeaders(s2.body.access_token), body: JSON.stringify({ assignment_id: plagId, code: codePlag }) })
+  // 202 pending → chờ grading xong
+  for (let i = 0; i < 10; i++) await new Promise(r => setTimeout(r, 200))
+  const plagCheck = await json(`/assignments/${plagId}/plagiarism?threshold=0.8`, { headers: authHeaders(rotated.body.access_token) })
+  assert(plagCheck.response.status === 200 && Array.isArray(plagCheck.body.pairs) && plagCheck.body.pairs.length >= 1, `plagiarism không phát hiện ${JSON.stringify(plagCheck.body).slice(0,400)}`)
+  assert(plagCheck.body.pairs[0].similarity >= 0.8, 'plagiarism similarity thấp')
+  const adminPlag = await json(`/admin/research/plagiarism?assignmentId=${plagId}&threshold=0.8`, { headers: authHeaders(rotated.body.access_token) })
+  assert(adminPlag.response.status === 200 && adminPlag.body.pairs.length >= 1, 'admin plagiarism lỗi')
+
+  console.log('E2E PASS: auth, password policy, refresh rotation, RBAC, pagination/filtering, anti-copy, scoring, chat, error format, process-telemetry, exam-mode, research-export, plagiarism')
 } finally {
   child.kill('SIGTERM')
   for (const suffix of ['', '-shm', '-wal']) {

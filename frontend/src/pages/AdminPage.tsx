@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../AuthContext'
 import { admin, classrooms } from '../api'
 import { Loader, useToast, avBg, avTx } from '../components/ui'
+import ResearchPanel from '../components/ResearchPanel'
 
 export default function AdminPage() {
   const { user, logout } = useAuth()
@@ -174,7 +175,7 @@ export default function AdminPage() {
 
         {/* Tabs */}
         <div className="tabs" style={{ marginBottom: '24px' }}>
-          {[['users', '👥 Người dùng'], ['classrooms', '🏫 Lớp học'], ['enrollment', '➕ Ghi danh']].map(([id, lbl]) => (
+          {[['users', '👥 Người dùng'], ['classrooms', '🏫 Lớp học'], ['enrollment', '➕ Ghi danh'], ['research', '📊 Research Export']].map(([id, lbl]) => (
             <button key={id} className={`tab ${activeTab === id ? 'active' : ''}`} onClick={() => setActiveTab(id)}>{lbl}</button>
           ))}
         </div>
@@ -405,6 +406,13 @@ export default function AdminPage() {
                 <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Ghi danh học sinh</button>
               </div>
             </form>
+          </div>
+        )}
+
+        {/* TAB: RESEARCH EXPORT */}
+        {activeTab === 'research' && (
+          <div className="animate-fade-in">
+            <ResearchPanel classroomId={selectedRoomId ? Number(selectedRoomId) : undefined} />
           </div>
         )}
       </div>

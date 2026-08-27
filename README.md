@@ -29,10 +29,11 @@ Frontend mặc định chạy tại `http://localhost:5173`, backend tại `http
 ```bash
 npm run test:unit          # AST/adapter tests (21)
 node backend/tests/process_metrics.test.mjs  # Process analytics tests (17)
-npm run test:e2e           # E2E toàn luồng (gồm process-telemetry)
+node backend/tests/rubric_judge.test.mjs     # Rubric + judge tests (26)
+npm run test:e2e           # E2E toàn luồng (gồm process-telemetry, exam-mode, research-export, plagiarism)
 ```
 
-Bộ E2E tạo database tạm và kiểm tra đăng nhập, chính sách mật khẩu, refresh-token rotation, phân quyền theo lớp, filter/sort/pagination, chống sao chép đáp án mẫu, nộp/chấm code, chat, định dạng lỗi API và **telemetry quá trình làm bài** (flush → nộp kèm sự kiện → phân quyền xem events → EWS process signals).
+Bộ E2E tạo database tạm và kiểm tra đăng nhập, chính sách mật khẩu, refresh-token rotation, phân quyền theo lớp, filter/sort/pagination, chống sao chép đáp án mẫu, nộp/chấm code, chat, định dạng lỗi API, **telemetry quá trình làm bài** (flush → nộp kèm sự kiện → phân quyền xem events → EWS process signals), **exam mode** (single attempt + timer + hide scores) và **research export + plagiarism** (4-sheet CSV zip + Jaccard 5-gram).
 
 ## Phase 1 — Programming Process Analytics
 
@@ -79,6 +80,21 @@ Endpoints chính:
 - `POST /submissions` với `is_exam` — enforce `EXAM_NOT_STARTED` / `EXAM_EXPIRED` / `EXAM_ALREADY_SUBMITTED` (409) và ẩn điểm khi `scores_hidden`
 
 Tạo bài thi (teacher): `POST /assignments {is_exam:true, duration_minutes:60, allow_paste:false, require_fullscreen:true, shuffle_questions:false, hide_scores_until:ISO}`. UI: TeacherDashboard toggle “📝 Chế độ Thi”, StudentDashboard hiển thị badge `📝 Thi`, nút `Vào thi`, màn hình thi với timer + chặn paste + fullscreen, và thông báo `🔒 Chờ công bố` khi đã nộp.
+
+## Phase 4 — Research Export & Plagiarism (A+B)
+
+**A) Research Export** khớp `data_collection_template.md` (4 sheets) + `statistical_analysis.py`:
+
+- `GET /admin/research/export?classroomId=1&format=json|csv|excel` — xuất ẩn danh `T001…` (không email/tên thật), 4 sheets: `students` (pre/post/final/dropout), `submissions` (tier1/2/3/total, week, test_pass_rate, teacher_reviewed), `llm_vs_human` (calibration từ `review_status=reviewed`), `early_warning` (risk_score, actual/predicted at-risk). `csv` trả `zip` 4 CSV + `README.txt`; `excel` (cần `npm install exceljs --prefix backend`) trả `.xlsx` 4 sheets; `json` trả trực tiếp.
+- `GET /admin/research/stats?classroomId=1` — tóm tắt `counts`, `mae` cho dashboard. Trả `counts.students/submissions/reviewed` để kiểm tra đủ `≥32/nhóm`, `≥50 calibration` trước khi chạy `statistical_analysis.py`.
+- UI: `AdminPage` tab **📊 Research Export** + `TeacherDashboard` tab **📊 Research** (`ResearchPanel.tsx`): chọn lớp, xem stats, nút **Tải JSON / CSV Zip / Excel**, ghi chú ẩn danh và lệnh `python statistical_analysis.py --data student_data.xlsx`.
+
+**B) Plagiarism Detection** (Jaccard 5-gram, bỏ comment/`#include`, chuẩn hoá whitespace, ngưỡng 0.5–0.95, mặc định 0.8):
+
+- `GET /assignments/:id/plagiarism?threshold=0.8` (teacher) và `GET /admin/research/plagiarism?assignmentId=...` — so sánh `latest` code mỗi SV trong cùng assignment, tính `similarity=|A∩B|/|A∪B|`, trả `pairs[]` sorted, `shared`, `a_len/b_len`, highlight `>0.9` đỏ, `>0.85` vàng. Kết hợp với `ai_suspicion` + `process_metrics` (paste_ratio, process_risk) trong `plagiarism.js:enhancedAiSuspicion`.
+- UI: `ResearchPanel` chọn bài tập + slider ngưỡng + **Kiểm tra**, `TeacherDashboard` → chọn bài tập → card **🔍 Kiểm tra đạo văn** hiện bảng cặp nghi vấn.
+
+Chạy phân tích sau khi xuất: `pip install pandas numpy scipy statsmodels scikit-learn matplotlib seaborn openpyxl && python research_docs/statistical_analysis.py --data neu-codelens-export.xlsx --output results/` → ra `baseline_equivalence.png`, `rq1_llm_accuracy.png`, `rq3/4/5…` + `research_results_summary.json`.
 
 ## Ghi chú triển khai
 

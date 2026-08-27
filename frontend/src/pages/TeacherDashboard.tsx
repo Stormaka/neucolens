@@ -7,6 +7,7 @@ import { ConceptHeatmap, RadarChart, scoreColor, PROFILE_BADGE, STATUS_BADGE, Lo
 import CodeGraph from '../components/CodeGraph'
 import ProcessPanel from '../components/ProcessPanel'
 import ReviewQueue from '../components/ReviewQueue'
+import ResearchPanel from '../components/ResearchPanel'
 
 export default function TeacherDashboard() {
   const { user, logout } = useAuth()
@@ -39,6 +40,8 @@ export default function TeacherDashboard() {
   const [systemChecks, setSystemChecks] = useState<any>(null)
   const [reviewCount, setReviewCount] = useState(0)
   const [examSessions, setExamSessions] = useState<any[]>([])
+  const [plagPairs, setPlagPairs] = useState<any[]>([])
+  const [plagLoading, setPlagLoading] = useState(false)
 
   useEffect(() => { loadData() }, [])
 
@@ -125,6 +128,7 @@ export default function TeacherDashboard() {
     setSelAsgnId(a.id)
     setAsgnSubsLoading(true)
     setExamSessions([])
+    setPlagPairs([])
     try {
       const subs = await assignments.submissions(a.id)
       setAsgnSubs(subs)
@@ -133,6 +137,16 @@ export default function TeacherDashboard() {
     if (a.isExam) {
       try { const sess = await submissions.examSessions(a.id); setExamSessions(sess || []) } catch { setExamSessions([]) }
     }
+  }
+  async function checkPlagiarism() {
+    if (!selAsgn) return
+    setPlagLoading(true)
+    try {
+      const r = await assignments.plagiarism(selAsgn.id, 0.8)
+      setPlagPairs(r.pairs || [])
+      if (!r.pairs?.length) toast('✅ Không phát hiện cặp nghi vấn (ngưỡng 0.8)')
+    } catch (e: any) { toast(e.message || 'Lỗi kiểm tra plagiarism', true) }
+    finally { setPlagLoading(false) }
   }
 
   const filtered = students.filter(s =>
@@ -213,7 +227,7 @@ export default function TeacherDashboard() {
 
         {/* ── Tabs ── */}
         <div className="tabs" style={{ marginBottom: '24px' }}>
-          {[['overview', '📊 Tổng quan'], ['assignments', '📋 Bài tập'], ['students', '👥 Sinh viên'], ['misconceptions', '🧠 Ngộ nhận'], ['ews', '🚨 EWS & Cảnh báo'], ['review', `⚖️ Duyệt chấm${reviewCount > 0 ? ` (${reviewCount})` : ''}`]].map(([id, lbl]) => (
+          {[['overview', '📊 Tổng quan'], ['assignments', '📋 Bài tập'], ['students', '👥 Sinh viên'], ['misconceptions', '🧠 Ngộ nhận'], ['ews', '🚨 EWS & Cảnh báo'], ['review', `⚖️ Duyệt chấm${reviewCount > 0 ? ` (${reviewCount})` : ''}`], ['research', '📊 Research']].map(([id, lbl]) => (
             <button key={id} className={`tab ${activeTab === id ? 'active' : ''}`} onClick={() => setActiveTab(id)}>{lbl}</button>
           ))}
         </div>
@@ -498,6 +512,32 @@ export default function TeacherDashboard() {
                     })}
                   </div>
                 )}
+                {/* Plagiarism (Phase 4B) */}
+                <div className="card" style={{ marginTop: '18px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
+                    <div style={{ fontWeight: 700, fontSize: '.9rem', fontFamily: 'var(--display)' }}>🔍 Kiểm tra đạo văn — Jaccard 5-gram (ngưỡng 0.8)</div>
+                    <button className="btn btn-ghost btn-sm" style={{ border: '1px solid var(--b2)' }} onClick={checkPlagiarism} disabled={plagLoading || !selAsgn}>
+                      {plagLoading ? '⏳ Đang so sánh...' : '🔍 Kiểm tra ngay'}
+                    </button>
+                  </div>
+                  {plagPairs.length === 0 ? (
+                    <div style={{ color: 'var(--t3)', fontSize: '.78rem', padding: '12px', textAlign: 'center', background: 'var(--bg3)', borderRadius: 'var(--r8)' }}>Chưa có kết quả — bấm Kiểm tra để so sánh {asgnSubs.filter(s=>s.code&&s.code.length>20).length} bài nộp</div>
+                  ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.78rem' }}>
+                        <thead><tr style={{ color: 'var(--t3)', borderBottom: '1px solid var(--b2)', textAlign: 'left' }}><th style={{ padding: '6px 8px' }}>Cặp SV</th><th style={{ padding: '6px 8px' }}>Jaccard</th><th style={{ padding: '6px 8px' }}>Shared</th><th style={{ padding: '6px 8px' }}>Độ dài</th></tr></thead>
+                        <tbody>{plagPairs.map((p, i) => (
+                          <tr key={i} style={{ borderBottom: '1px solid var(--b1)', background: p.similarity > 0.9 ? 'rgba(248,113,113,.08)' : p.similarity > 0.85 ? 'rgba(251,191,36,.08)' : 'transparent' }}>
+                            <td style={{ padding: '7px 8px' }}>{p.aName} <span style={{ color: 'var(--t3)', fontSize: '.68rem' }}>#{p.aStudent}</span> ↔ {p.bName} <span style={{ color: 'var(--t3)', fontSize: '.68rem' }}>#{p.bStudent}</span></td>
+                            <td style={{ padding: '7px 8px', fontWeight: 800, color: p.similarity > 0.9 ? '#f87171' : p.similarity > 0.85 ? '#fbbf24' : 'inherit' }}>{(p.similarity * 100).toFixed(1)}%</td>
+                            <td style={{ padding: '7px 8px' }}>{p.shared}</td>
+                            <td style={{ padding: '7px 8px', color: 'var(--t3)' }}>{p.aLen} / {p.bLen}</td>
+                          </tr>
+                        ))}</tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
                 {selAsgn.isExam && (
                   <div className="card" style={{ marginTop: '18px' }}>
                     <div style={{ fontWeight: 700, fontSize: '.9rem', marginBottom: '12px', fontFamily: 'var(--display)' }}>👁️ Giám sát Thi — {examSessions.length} phiên đã bắt đầu</div>
@@ -1042,6 +1082,13 @@ export default function TeacherDashboard() {
         {activeTab === 'review' && (
           <div className="animate-fade-in">
             <ReviewQueue />
+          </div>
+        )}
+
+        {/* ── TAB: RESEARCH EXPORT (Phase 4A+B) ── */}
+        {activeTab === 'research' && (
+          <div className="animate-fade-in">
+            <ResearchPanel classroomId={classId || undefined} />
           </div>
         )}
       </div>
