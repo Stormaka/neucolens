@@ -53,3 +53,5 @@ backend/tests/debug_*.js
 # Research results (generated)
 results/
 coverage/
+
+.env*
