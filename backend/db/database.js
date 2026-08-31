@@ -1,4 +1,5 @@
-import Database from 'better-sqlite3'
+import BetterSqlite3 from 'better-sqlite3'
+import LibSQLDatabase from 'libsql'
 import { fileURLToPath } from 'url'
 import path from 'path'
 import bcrypt from 'bcryptjs'
@@ -31,11 +32,17 @@ let db
 
 export function getDb() {
   if (!db) {
-    db = new Database(DB_PATH)
-    db.pragma('journal_mode = WAL')
-    db.pragma('busy_timeout = 5000')
-    db.pragma('synchronous = NORMAL')
-    db.pragma('foreign_keys = ON')
+    if (process.env.TURSO_DATABASE_URL) {
+      // Production Vercel + Turso (persistent SQLite) — uses libSQL sync API (compatible with better-sqlite3)
+      db = new LibSQLDatabase(process.env.TURSO_DATABASE_URL, { authToken: process.env.TURSO_AUTH_TOKEN })
+      try { db.exec('PRAGMA foreign_keys = ON') } catch {}
+    } else {
+      db = new BetterSqlite3(DB_PATH)
+      db.pragma('journal_mode = WAL')
+      db.pragma('busy_timeout = 5000')
+      db.pragma('synchronous = NORMAL')
+      db.pragma('foreign_keys = ON')
+    }
     initSchema()
     runMigrations()
   }
